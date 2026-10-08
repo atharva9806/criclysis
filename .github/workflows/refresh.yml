@@ -1,0 +1,279 @@
+name: Daily data refresh
+
+# Live tracking without any API (CLAUDE.md; docs/ARCHITECTURE.md §3.1).
+# Once a day this workflow downloads Cricsheet's public archives from
+# cricsheet.org, rebuilds data/out with the pipeline and upserts it into Neon.
+# There is no live-score API, no scraping, no key and no paid service. The
+# pipeline checks robots.txt before it downloads anything.
+#
+# Streams A and B land the commands it needs over several PRs. Until a
+# command exists, its step is switched off by scripts/ci/refresh-plan.sh, and
+# the run summary says which steps ran and why. Until the pipeline has
+# `build --genders`, the current pipeline builds men's data to data/out and
+# women's to data/out-female, to measure women's volume (§7 R4).
+#
+# Failures never touch the site: every step only runs if all earlier steps
+# passed, so a failed fetch, build or golden check means the import never
+# starts. Only a complete v2 build is imported: the import waits until build,
+# winprob and replays (all with --genders), fingerprint and the golden test
+# all exist. The importer commits in small transactions behind an advisory
+# lock (§3.2, §3.3), so a failed import stops at a batch boundary and the site
+# keeps serving its current data.
+#
+# Dropped runs: GitHub keeps at most one *pending* run per concurrency group,
+# and a newer queued run cancels the one that is waiting (a running one is
+# never cancelled). So a scheduled refresh waiting behind a long run can be
+# dropped by a later dispatch or migrations push, and a waiting migrate run by
+# a later refresh. Nothing is lost: the refresh runs `db:migrate` (idempotent)
+# whenever imports are allowed, even when the archives are unchanged, and the
+# next day's run, or a manual "Run workflow", picks up the data.
+#
+# Inactivity (§7 R6): GitHub automatically disables scheduled workflows in a
+# public repository after 60 days without repository activity. The site then
+# keeps serving its last import, /api/health reports `stale` once the data is
+# more than 72 hours old, and the "data as of" date stops moving. To resume,
+# open Actions > Daily data refresh, choose "Enable workflow", then
+# "Run workflow" once to catch up. workflow_dispatch also runs a refresh at
+# any time.
+
+on:
+  schedule:
+    - cron: "23 4 * * *" # 04:23 UTC every day
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild and import even if the Cricsheet archives are unchanged
+        type: boolean
+        default: false
+      import:
+        description: Import into the database (off = build only, and upload data/out* as an artifact kept for 3 days)
+        type: boolean
+        default: true
+  # The migrate job below (§3.5). It shares this workflow's concurrency group,
+  # so a migration never runs at the same time as an import.
+  push:
+    branches: [main]
+    paths:
+      - "web/drizzle/**"
+
+# One writer at a time. A running refresh is never cancelled.
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Refresh from Cricsheet
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Scheduled runs have no inputs: they import, without force.
+      FORCE: ${{ inputs.force == true }}
+      DO_IMPORT: ${{ github.event_name != 'workflow_dispatch' || inputs.import == true }}
+      # Whether the secrets exist, without exposing them to every step.
+      # Steps that need a secret get it in their own env.
+      HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+      HAS_REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET != '' }}
+      SITE_URL: ${{ vars.SITE_URL }}
+      PYTHONUNBUFFERED: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Plan the run
+        id: plan
+        run: scripts/ci/refresh-plan.sh
+
+      # §3.1 step 4 (npm ci) comes first, so migrations do not depend on the
+      # fetch or the build.
+      - uses: actions/setup-node@v4
+        if: steps.plan.outputs.node == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        if: steps.plan.outputs.node == 'true'
+        working-directory: web
+        run: npm ci
+
+      # §3.1 step 7, run early: migrations are idempotent, so this runs on
+      # every run that may import, even when the archives turn out to be
+      # unchanged. That also catches up a migrate run dropped by the
+      # concurrency group (see the header).
+      - name: Migrate the database
+        if: steps.plan.outputs.migrate == 'true'
+        working-directory: web
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run db:migrate
+
+      # §3.1 step 2. --no-mirror: the GitHub-release mirror has no women's
+      # matches, no Afghanistan matches and stops at 2026-06-28 (§7 R2). If
+      # cricsheet.org refuses or robots.txt disallows the download, this step
+      # fails and nothing after it runs.
+      - name: Fetch the Cricsheet archives
+        timeout-minutes: 20
+        run: python -m pipeline fetch --refresh --no-mirror --formats test odi t20i
+
+      # §3.1 step 3.
+      - name: Fingerprint the archives
+        if: steps.plan.outputs.fingerprint == 'true'
+        run: python -m pipeline fingerprint --out data/out/fingerprint.json
+
+      # §3.1 step 4. check-fingerprint compares fingerprint.json with the
+      # latest complete dataset_meta.source_fingerprint. It prints exactly
+      # `changed` or `unchanged` (and appends changed=true|false to
+      # $GITHUB_OUTPUT); a non-zero exit is an error and fails the run.
+      - name: Compare with the last import
+        id: check
+        if: steps.plan.outputs.check_fingerprint == 'true'
+        working-directory: web
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          out=$(npm run --silent check-fingerprint -- ../data/out/fingerprint.json)
+          printf '%s\n' "$out"
+          if [[ $'\n'$out$'\n' == *$'\n'unchanged$'\n'* ]]; then
+            echo "unchanged=true" >> "$GITHUB_OUTPUT"
+            msg="The Cricsheet archives are unchanged since the last complete import, so the build and import were skipped. Run the workflow with force=true to rebuild anyway."
+            echo "::notice title=Unchanged, skipped::$msg"
+            printf '**Unchanged, skipped.** %s\n' "$msg" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "unchanged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # §3.1 step 5.
+      - name: Build men's and women's data
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'genders'
+        run: python -m pipeline build --genders male female
+
+      - name: Build men's data (current pipeline)
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'legacy'
+        run: python -m pipeline build --gender male --out data/out
+
+      - name: Build women's data (current pipeline)
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'legacy'
+        run: python -m pipeline build --gender female --out data/out-female
+
+      - name: Fit the win-probability models
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.winprob == 'true'
+        run: python -m pipeline winprob --genders male female
+
+      - name: Export replays
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.replays == 'true'
+        run: python -m pipeline replays --all --genders male female
+
+      - name: Summarise the build volume
+        if: always() && steps.check.outputs.unchanged != 'true'
+        run: python3 scripts/ci/volume_summary.py data/out=male data/out-female=female | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # §3.1 step 6. The only check of the women's models (§7 R7).
+      - name: Check the TypeScript win-probability port
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.golden == 'true'
+        working-directory: web
+        env:
+          WINPROB_FILE: ../data/out/winprob.json
+        run: npm run test:golden
+
+      # §3.1 step 7 (db:migrate already ran, near the top). The report is
+      # uploaded below, and artifacts of a public repository are
+      # downloadable by any GitHub user, so the secret is masked out of it.
+      - name: Import into Postgres
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.import == 'true'
+        working-directory: web
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npm run import -- --data ../data/out 2>&1 \
+            | python3 -u ../scripts/ci/redact.py DATABASE_URL \
+            | tee ../data/import-report.txt
+
+      # §3.1 step 8.
+      - name: Revalidate the site
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.revalidate == 'true'
+        env:
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+        run: >-
+          curl -fsS --retry 3 --retry-all-errors --max-time 60
+          -X POST "${SITE_URL%/}/api/revalidate"
+          -H "x-revalidate-secret: $REVALIDATE_SECRET"
+
+      # §3.1 step 9.
+      - name: Upload the build (import=false)
+        if: always() && env.DO_IMPORT == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-out-${{ github.run_id }}
+          path: data/out*
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Upload the manifest and import report
+        if: always() && env.DO_IMPORT == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: refresh-report-${{ github.run_id }}
+          path: |
+            data/out*/manifest.json
+            data/out/fingerprint.json
+            data/import-report.txt
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # §3.5: apply new migrations when they reach main, so the schema is ready
+  # before the next refresh. Migrations are expand-then-contract, so running
+  # them while the new web build deploys is safe.
+  migrate:
+    name: Migrate the database
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that there is something to migrate
+        id: gate
+        run: |
+          if [ "$HAS_DATABASE_URL" != true ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Migration skipped::The DATABASE_URL secret is not set."
+          elif [ ! -f drizzle/meta/_journal.json ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Migration skipped::web/drizzle/meta/_journal.json does not exist yet."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - if: steps.gate.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Apply migrations
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run db:migrate

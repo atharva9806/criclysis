@@ -127,8 +127,11 @@ body {
   @apply inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-[#0071e3] transition hover:underline;
 }
 
-.table-apple th {
+.table-apple thead th {
   @apply sticky top-0 z-10 bg-white/90 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73] backdrop-blur;
+}
+.table-apple tbody th {
+  @apply px-4 py-3.5 text-left text-sm font-semibold;
 }
 .table-apple td {
   @apply px-4 py-3.5 text-sm;

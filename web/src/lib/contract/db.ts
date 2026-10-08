@@ -14,6 +14,9 @@ import type {
   MatchInnings,
   MatchResult,
   PersonId,
+  Record5,
+  TeamFormat,
+  TeamFormatDetail,
   TeamId,
   Thresholds,
   VenueKey,
@@ -139,4 +142,228 @@ export type ReplayContext = {
     traits: { strengths: TraitRow[]; weaknesses: TraitRow[] };
     batting: { vsType: SplitRow[]; vsTypePhase: SplitRow[]; vsBowler: SplitRow[] };
   }>;
+};
+
+// --------------------------------------------------------------- players (B2)
+
+export type PlayerSort = "runs" | "wickets" | "batAvg" | "batSr" | "bowlAvg" | "econ" | "name";
+export type RoleFilter = "batter" | "bowler" | "allrounder" | "wicketkeeper";
+
+/** One row of /players: career_stats for one formatKey, or summed over the filtered formatKeys. */
+export type PlayerListRow = {
+  slug: string;
+  name: string;
+  gender: Gender;
+  country: string | null;
+  teams: string[];
+  role: string | null;
+  lastPlayed: string | null;
+  formatKeys: FormatKey[];
+  /** null when any summed format lacks the XI count (v1 data). */
+  matches: number | null;
+  batInnings: number | null;
+  runs: number | null;
+  balls: number | null;
+  highest: number | null;
+  hundreds: number | null;
+  fifties: number | null;
+  batAvg: number | null;
+  batSr: number | null;
+  wickets: number | null;
+  bowlBalls: number | null;
+  bowlAvg: number | null;
+  econ: number | null;
+};
+
+export type LeaderRow = {
+  slug: string;
+  name: string;
+  country: string | null;
+  value: number;
+  innings: number | null;
+  balls: number | null;
+};
+
+export type PlayerHeader = {
+  slug: string;
+  sourceId: PersonId;
+  name: string;
+  fullName: string | null;
+  gender: Gender;
+  country: string | null;
+  teams: string[];
+  teamIds: TeamId[];
+  role: string | null;
+  battingHand: string | null;
+  bowlingType: string | null;
+  born: string | null;
+  debut: string | null;
+  lastPlayed: string | null;
+  sampleBalls: number;
+};
+
+/** career_stats for one formatKey; rates come from the pipeline's overall split. */
+export type CareerRow = {
+  formatKey: FormatKey;
+  format: Fmt;
+  matches: number | null;
+  batInnings: number | null;
+  notOuts: number | null;
+  runs: number | null;
+  balls: number | null;
+  outs: number | null;
+  highest: number | null;
+  highestNotOut: boolean | null;
+  hundreds: number | null;
+  fifties: number | null;
+  fours: number | null;
+  sixes: number | null;
+  batAvg: number | null;
+  batSr: number | null;
+  bowlInnings: number | null;
+  bowlBalls: number | null;
+  runsConceded: number | null;
+  wickets: number | null;
+  maidens: number | null;
+  bowlAvg: number | null;
+  bowlEcon: number | null;
+  bowlSr: number | null;
+  best: { wickets: number; runs: number } | null;
+  fourWkts: number | null;
+  fiveWkts: number | null;
+  strengths: number | null;
+  weaknesses: number | null;
+};
+
+export type ProfileAxisRow = {
+  axis: string;
+  label: string;
+  discipline: "batting" | "bowling";
+  value: number;
+  percentile: number;
+  balls: number;
+};
+
+export type YearRow = {
+  year: number;
+  batInnings: number | null;
+  runs: number | null;
+  balls: number | null;
+  outs: number | null;
+  average: number | null;
+  strikeRate: number | null;
+  bowlInnings: number | null;
+  bowlBalls: number | null;
+  runsConceded: number | null;
+  wickets: number | null;
+  bowlAverage: number | null;
+  economy: number | null;
+};
+
+export type InningsRow = {
+  discipline: "batting" | "bowling";
+  matchId: string;
+  playedOn: string;
+  opponent: string;
+  /** From the matches table; null when the match is not in the database. */
+  venue: string | null;
+  inningsNo: number | null;
+  runs: number | null;
+  ballsFaced: number | null;
+  fours: number | null;
+  sixes: number | null;
+  position: number | null;
+  out: boolean | null;
+  dismissal: string | null;
+  ballsBowled: number | null;
+  runsConceded: number | null;
+  wickets: number | null;
+  maidens: number | null;
+};
+
+export type DismissalRow = { discipline: "batting" | "bowling"; kind: string; subject: string; count: number };
+
+/** Runs and dismissals over the most recent innings, next to the career figures. */
+export type FormSummary = {
+  innings: number;
+  runs: number;
+  outs: number;
+  balls: number;
+  average: number | null;
+  strikeRate: number | null;
+  from: string;
+  to: string;
+};
+
+export type PlayerProfile = {
+  player: PlayerHeader;
+  careers: CareerRow[];
+  formatKey: FormatKey | null;
+  strengths: TraitRow[];
+  weaknesses: TraitRow[];
+  profile: ProfileAxisRow[];
+  splits: SplitRow[];
+  yearly: YearRow[];
+  recentBatting: InningsRow[];
+  recentBowling: InningsRow[];
+  form: { batting: FormSummary | null; bowling: { innings: number; wickets: number; runsConceded: number; balls: number; from: string; to: string } | null };
+  dismissals: DismissalRow[];
+};
+
+export type PlayerSummary = {
+  player: PlayerHeader;
+  careers: CareerRow[];
+  formatKey: FormatKey | null;
+  profile: ProfileAxisRow[];
+  strengths: TraitRow[];
+  weaknesses: TraitRow[];
+};
+
+// ----------------------------------------------------------------- teams (B2)
+
+export type TeamListRow = {
+  id: TeamId;
+  name: string;
+  gender: Gender;
+  label: string;
+  firstMatch: string | null;
+  lastMatch: string | null;
+  matches: number;
+  formats: Partial<Record<Fmt, Record5 & { first: string | null; last: string | null }>>;
+};
+
+export type TeamPage = {
+  team: { id: TeamId; name: string; gender: Gender; label: string };
+  formats: Fmt[];
+  formatKey: FormatKey;
+  span: { first: string | null; last: string | null };
+  record: Record5;
+  detail: TeamFormatDetail;
+  recent: MatchRow[];
+};
+
+export type H2HRow = TeamFormat["headToHead"][number];
+
+// -------------------------------------------------------------- strategy (B2)
+
+/** One evidence line: a statement and the sample it rests on. */
+export type DossierLine = { text: string; sample: string };
+
+export type PlayerDossier = {
+  player: PlayerHeader;
+  formatKey: FormatKey;
+  career: CareerRow | null;
+  batting: { attack: TraitRow[]; avoid: TraitRow[]; vsType: SplitRow[]; byPhase: SplitRow[] } | null;
+  bowling: { strengths: TraitRow[]; weaknesses: TraitRow[]; byHand: SplitRow[]; byPhase: SplitRow[] } | null;
+};
+
+export type MatchupPlan = {
+  formatKey: FormatKey;
+  team: { id: TeamId; label: string };
+  opponent: { id: TeamId; label: string };
+  headToHead: H2HRow | null;
+  lines: { heading: string; items: DossierLine[] }[];
+  opponentBatters: (TeamFormat["topBatters"][number] & { traits: TraitRow[] })[];
+  opponentBowlers: (TeamFormat["topBowlers"][number] & { traits: TraitRow[] })[];
+  recent: MatchRow[];
 };

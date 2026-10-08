@@ -8,19 +8,6 @@ export function SectionTitle({ eyebrow, title, sub }: { eyebrow?: string; title:
   );
 }
 
-export function Sparkline({ values, color = "#0071e3" }: { values: number[]; color?: string }) {
-  if (!values.length) return null;
-  const w = 90;
-  const h = 26;
-  const max = Math.max(...values, 1);
-  const pts = values.map((v, i) => `${(i / Math.max(1, values.length - 1)) * w},${h - (v / max) * (h - 3) - 1}`).join(" ");
-  return (
-    <svg width={w} height={h} className="overflow-visible" aria-hidden="true">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 /** A short notice in place of a section that has nothing to show. */
 export function EmptyState({ title, children }: { title: string; children?: React.ReactNode }) {
   return (

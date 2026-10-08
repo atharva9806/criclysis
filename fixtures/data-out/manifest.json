@@ -3,7 +3,7 @@
   "buildId": "2026-06-29T16:35:48+00:00-local",
   "generated": "2026-06-29T16:35:48+00:00",
   "fingerprint": "sha256:181590c4525c1e21cf308f73389f0a3dc7b57b96b60913bc6880906673998907",
-  "playerCount": 153,
+  "playerCount": 156,
   "matchCount": 110,
   "formats": {
     "test-m": {
@@ -16,8 +16,8 @@
       "balls_per_innings": null,
       "white_ball": false,
       "matches": 20,
-      "deliveries": 34895,
-      "players": 104,
+      "deliveries": 35560,
+      "players": 106,
       "venues": 13,
       "bowlersMissingStyle": 0,
       "firstDate": "2006-08-17",
@@ -225,7 +225,7 @@
       {
         "id": "fixture",
         "used": true,
-        "note": "Fixture subset: 20 test, 40 odi, 50 t20i men's matches between Australia, England, India, South Africa, plus 225258, 1384439, 1144530, 1415755. winprob.json is fitted on every match."
+        "note": "Fixture subset: 20 test, 40 odi, 50 t20i men's matches between Australia, England, India, South Africa, plus 225258, 1389401, 1384439, 1144530, 1415755. winprob.json is fitted on every match."
       }
     ],
     "enrichment": {

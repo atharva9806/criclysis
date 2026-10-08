@@ -4,7 +4,7 @@
 docs/ARCHITECTURE.md §1.2 for 110 men's matches: the most recent matches
 between four teams, so that the same players recur often enough for cohorts,
 strengths and weaknesses to exist, plus a few matches chosen for their results
-(a tie decided by a super over, an awarded Test). The counts per format are
+(a tie decided by a super over, an awarded Test, penalty runs). The counts per format are
 what fits the fixture in 3 MB: a player file carries a full innings log and
 up to 24 claims, so 60 matches of every format came to almost 5 MB. Everything is
 real Cricsheet data, run through the same build as the full dataset;
@@ -35,7 +35,8 @@ TEAMS = frozenset({"India", "Australia", "England", "South Africa"})
 PER_FORMAT = {"test": 20, "odi": 40, "t20i": 50}
 #: Always included, whatever else is selected.
 REQUIRED = {
-    "test": ["225258"],               # England v Pakistan 2006: awarded
+    "test": ["225258",                # England v Pakistan 2006: awarded
+             "1389401"],              # England v India 2024: 5 penalty runs
     "odi": ["1384439", "1144530"],    # 2023 World Cup final; 2019 final (super over)
     "t20i": ["1415755"],              # 2024 T20 World Cup final
 }

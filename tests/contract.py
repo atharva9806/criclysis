@@ -528,7 +528,15 @@ def validate_dir(root: Path, *, replays: bool = True, winprob: bool = True) -> l
                 errors.append(f"replays/{m['id']}.json.gz is missing")
                 continue
             replay = json.loads(gzip.decompress(path.read_bytes()))
-            errors += check(REPLAY, replay, f"replays/{m['id']}")
+            replay_errors = check(REPLAY, replay, f"replays/{m['id']}")
+            errors += replay_errors
+            if replay_errors:
+                continue
+            # The replay engine's totals must reproduce the scorecard.
+            totals = [(i["runs"], i["wickets"], i["balls"]) for i in m["innings"]]
+            if replay_totals(replay) != totals:
+                errors.append(f"replays/{m['id']}: innings totals {replay_totals(replay)} "
+                              f"differ from matches.json {totals}")
         extra = {p.name[:-len(".json.gz")] for p in (root / "replays").glob("*.json.gz")}
         if extra - set(by_id):
             errors.append(f"replays without a match: {sorted(extra - set(by_id))[:5]}")

@@ -17,20 +17,49 @@ def overs_text(balls: int, balls_per_over: int = 6) -> str:
     return f"{balls // balls_per_over}.{balls % balls_per_over}"
 
 
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
 def result_text(info: dict) -> str:
+    """The result as a scorecard states it, from ``info.outcome`` alone.
+
+    Cricsheet records an innings victory as ``by: {innings: 1, runs: N}``
+    and a draw as ``result: "draw"``; both used to come out wrong ("won by N
+    runs" and an empty string).
+    """
     out = info.get("outcome") or {}
-    if out.get("result") == "tie":
-        eliminator = out.get("eliminator")
-        return f"Match tied ({eliminator} won the Super Over)" if eliminator else "Match tied"
-    if out.get("result") == "no result":
-        return "No result"
     winner = out.get("winner")
     by = out.get("by") or {}
-    if winner and "runs" in by:
-        return f"{winner} won by {by['runs']} runs"
-    if winner and "wickets" in by:
-        return f"{winner} won by {by['wickets']} wickets"
-    return f"{winner} won" if winner else ""
+    method = out.get("method")
+    result = out.get("result")
+    if result == "tie":
+        text = "Match tied"
+        if out.get("eliminator"):
+            text += f" ({out['eliminator']} won the Super Over)"
+        elif out.get("bowl_out"):
+            text += f" ({out['bowl_out']} won the bowl-out)"
+    elif result == "draw":
+        text = "Match drawn"
+    elif result == "no result":
+        text = "No result"
+    elif winner and by.get("innings"):
+        runs = by.get("runs", 0)
+        text = f"{winner} won by an innings and {_plural(runs, 'run')}" if runs \
+            else f"{winner} won by an innings"
+    elif winner and "runs" in by:
+        text = f"{winner} won by {_plural(by['runs'], 'run')}"
+    elif winner and "wickets" in by:
+        text = f"{winner} won by {_plural(by['wickets'], 'wicket')}"
+    elif winner and method == "Awarded":
+        return f"{winner} won (awarded)"
+    elif winner:
+        text = f"{winner} won"
+    else:
+        text = "No result"
+    if method and method != "Awarded":
+        text += f" ({method} method)"
+    return text
 
 
 def build_result(info: dict, gender: str) -> dict:
@@ -74,19 +103,39 @@ def innings_rows(raw: dict, gender: str) -> list[dict]:
                         wickets += 1
         target = inn.get("target")
         team = inn.get("team", "")
+        # Penalty runs awarded outside any delivery (Laws 41-42) belong to
+        # the total but to no ball; Cricsheet lists them per innings.
+        penalty = inn.get("penalty_runs") or {}
+        penalty_runs = int(penalty.get("pre", 0)) + int(penalty.get("post", 0))
         rows.append({
             "team": team,
             "teamId": team_id(team, gender),
-            "runs": runs,
+            "runs": runs + penalty_runs,
             "wickets": wickets,
             "balls": balls,
             "overs": overs_text(balls, balls_per_over),
             "declared": bool(inn.get("declared")),
             "target": ({"runs": int(target.get("runs", 0)), "overs": target.get("overs")}
                        if target else None),
-            "penaltyRuns": 0,
+            "penaltyRuns": penalty_runs,
         })
     return rows
+
+
+def missing_fields(missing) -> list[str]:
+    """info.missing as a list of names.
+
+    Mostly it is already names ("player_of_match", "umpires"), but some
+    entries are objects that say which part is missing
+    ({"powerplays": {"2": ["fielding"]}}); those contribute their keys.
+    """
+    out: list[str] = []
+    for entry in missing or []:
+        names = list(entry) if isinstance(entry, dict) else [str(entry)]
+        for name in names:
+            if name not in out:
+                out.append(name)
+    return out
 
 
 def has_deliveries(raw: dict) -> bool:
@@ -132,7 +181,7 @@ def build_match_row(raw: dict, match_id: str, fmt: str, *, venue_key: str,
                           for name in info.get("player_of_match") or []],
         "scheduledOvers": info.get("overs"),
         "innings": innings_rows(raw, gender),
-        "missing": [m for m in info.get("missing") or [] if isinstance(m, str)],
+        "missing": missing_fields(info.get("missing")),
         "hasReplay": has_deliveries(raw),
         "featuredRank": None,
     }

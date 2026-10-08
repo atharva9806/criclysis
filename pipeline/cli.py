@@ -4,6 +4,7 @@
     python -m pipeline build     --genders male female
     python -m pipeline winprob   # fit and validate the win-probability models
     python -m pipeline replays   --all --genders male female
+    python -m pipeline fingerprint --out data/out/fingerprint.json
     python -m pipeline fixtures  --out fixtures/data-out
     python -m pipeline all       # fetch then build
 
@@ -91,6 +92,20 @@ def cmd_replays(args) -> int:
     return 0 if index else 1
 
 
+def cmd_fingerprint(args) -> int:
+    from .export import write_json
+    from .fingerprint import fingerprint
+    paths = {cricsheet.archive_path(fmt).name: cricsheet.archive_path(fmt) for fmt in args.formats}
+    missing = [str(p) for p in paths.values() if not p.exists()]
+    if missing:
+        log.error("missing archives: %s - run `python -m pipeline fetch` first", ", ".join(missing))
+        return 1
+    payload = fingerprint(paths)
+    write_json(Path(args.out), payload, pretty=True)
+    log.info("%s -> %s", payload["combined"], args.out)
+    return 0
+
+
 def cmd_fixtures(args) -> int:
     from .fixtures import build_fixtures
     try:
@@ -162,6 +177,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_genders(p_rp)
     p_rp.add_argument("--out", default=str(WEB_DATA_DIR))
     p_rp.set_defaults(func=cmd_replays)
+
+    p_fp = sub.add_parser("fingerprint", help="fingerprint the downloaded archives")
+    add_formats(p_fp, choices=tuple(FORMATS))
+    p_fp.add_argument("--out", default=str(WEB_DATA_DIR / "fingerprint.json"))
+    p_fp.set_defaults(func=cmd_fingerprint)
 
     p_fx = sub.add_parser("fixtures", help="write the small deterministic fixture dataset")
     p_fx.add_argument("--out", default="fixtures/data-out")

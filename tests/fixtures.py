@@ -173,9 +173,9 @@ def write_archive(path, matches) -> None:
     import zipfile
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         for match_id, raw in matches:
-            info = zipfile.ZipInfo(f"{match_id}.json", date_time=(2024, 1, 2, 3, 4, 5))
+            info = zipfile.ZipInfo(f"{match_id}.json", date_time=(2024, 1, 2, 3, 4, 6))
             zf.writestr(info, json.dumps(raw))
-        zf.writestr(zipfile.ZipInfo("README.txt", date_time=(2024, 1, 2, 3, 4, 5)), "fixture")
+        zf.writestr(zipfile.ZipInfo("README.txt", date_time=(2024, 1, 2, 3, 4, 6)), "fixture")
 
 
 def simulated_matches(fmt: str, count: int, *, gender: str = "male", seed: int = 1,

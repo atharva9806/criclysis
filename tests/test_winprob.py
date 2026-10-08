@@ -229,3 +229,109 @@ class ReplayTests(unittest.TestCase):
         curve = win_curve(rp, model)
         self.assertEqual(curve[-1][2], 0.0)   # chasing side got there
         self.assertTrue(all(0.0 <= p <= 1.0 for _, _, p in curve))
+
+
+class GenderAndVenueTests(unittest.TestCase):
+    def test_trace_match_filters_by_gender(self):
+        raw = _match([[_delivery(1)]], [[_delivery(1)]], outcome={"winner": "Home"})
+        raw["info"]["gender"] = "female"
+        self.assertIsNone(trace_match(raw, "w1", "t20i"))
+        trace = trace_match(raw, "w1", "t20i", gender=None)
+        self.assertEqual(trace.gender, "female")
+        self.assertIsNotNone(trace_match(raw, "w1", "t20i", gender="female"))
+
+    def test_ground_pars_are_keyed_by_venue_key(self):
+        traces = _synthetic_corpus(200)
+        for i, t in enumerate(traces):
+            t.venue = "County Ground|Bristol" if i % 2 else "County Ground|Taunton"
+        model = fit_model("t20i", traces)
+        pars = winprob.venue_pars(traces, model)
+        self.assertEqual(set(pars), {"County Ground|Bristol", "County Ground|Taunton"})
+        self.assertEqual(sum(p["matches"] for p in pars.values()),
+                         sum(1 for t in traces if t.first_complete))
+
+
+class GoldenRoundTripTests(unittest.TestCase):
+    """The golden states are computed from the model rebuilt from its JSON, so
+    any client holding winprob.json can reproduce them exactly."""
+
+    def assert_golden_matches(self, payload: dict, tolerance: float = 1e-12):
+        model = winprob.model_from_json(payload)
+        for want, got in zip(payload["golden"], winprob.golden_states(model)):
+            for key in ("ballsLeft", "wickets", "runs", "need"):
+                self.assertEqual(want[key], got[key])
+            self.assertAlmostEqual(want["chase"], got["chase"], delta=tolerance)
+            self.assertAlmostEqual(want["battingFirst"], got["battingFirst"], delta=tolerance)
+            for a, b in zip(want["projected"], got["projected"]):
+                self.assertAlmostEqual(a, b, delta=tolerance)
+        self.assertEqual(len(payload["golden"]), 60)
+
+    def test_round_trip_on_a_fitted_model(self):
+        import json
+        traces = _synthetic_corpus(300)
+        payload = winprob.build_model("t20i", "male", traces)
+        payload = json.loads(json.dumps(payload))
+        self.assert_golden_matches(payload)
+        self.assertEqual(payload["par"], winprob.model_from_json(payload).par_total())
+        self.assertEqual((payload["formatKey"], payload["gender"]), ("t20i-m", "male"))
+
+    def test_round_trip_on_the_fixture_models(self):
+        import json
+        from pathlib import Path
+        path = Path(__file__).resolve().parent.parent / "fixtures" / "data-out" / "winprob.json"
+        models = json.loads(path.read_text())["formats"]
+        self.assertEqual(set(models), {"odi-m", "t20i-m"})
+        for payload in models.values():
+            self.assert_golden_matches(payload)
+
+    def test_fixture_win_curve_matches_the_fixture_model(self):
+        import gzip
+        import json
+        from pathlib import Path
+        from pipeline.replay import win_curve
+        root = Path(__file__).resolve().parent.parent / "fixtures" / "data-out"
+        model = winprob.model_from_json(
+            json.loads((root / "winprob.json").read_text())["formats"]["odi-m"])
+        replay = json.loads(gzip.decompress((root / "replays" / "1384439.json.gz").read_bytes()))
+        want = json.loads((root / "replays" / "1384439.wincurve.json").read_text())
+        got = win_curve(replay, model)
+        self.assertEqual(len(want), len(got))
+        for (wi, wb, wp), (gi, gb, gp) in zip(want, got):
+            self.assertEqual((wi, wb), (gi, gb))
+            self.assertAlmostEqual(wp, gp, delta=1e-12)
+        # Australia chased 241 down: the final state is a certain chase.
+        self.assertEqual(got[-1][2], 0.0)
+
+
+class BuildPerFormatKeyTests(unittest.TestCase):
+    def test_one_model_per_gender(self):
+        import json
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from tests.contract import WINPROB, check
+        from tests.fixtures import simulated_matches, write_archive
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            archive = tmp / "t20s_json.zip"
+            write_archive(archive, simulated_matches("t20i", 110, seed=5)
+                          + simulated_matches("t20i", 110, gender="female", seed=6,
+                                              suffix=" (W)"))
+            winprob.build(("t20i",), tmp, archives={"t20i": archive},
+                          venue_key=lambda venue, city: venue)
+            payload = json.loads((tmp / "winprob.json").read_text())
+            self.assertEqual(list(payload["formats"]), ["t20i-m", "t20i-w"])
+            self.assertEqual(payload["formats"]["t20i-w"]["gender"], "female")
+            self.assertEqual(check(WINPROB, payload, "winprob"), [])
+            self.assertEqual(payload["formats"]["t20i-w"]["matches"], 110)
+
+            # Too few matches for a formatKey: no model rather than a bad one.
+            write_archive(archive, simulated_matches("t20i", 110, seed=5)
+                          + simulated_matches("t20i", 20, gender="female", seed=6,
+                                              suffix=" (W)"))
+            winprob.build(("t20i",), tmp, archives={"t20i": archive},
+                          venue_key=lambda venue, city: venue)
+            payload = json.loads((tmp / "winprob.json").read_text())
+            self.assertEqual(list(payload["formats"]), ["t20i-m"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

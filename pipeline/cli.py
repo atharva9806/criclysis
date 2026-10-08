@@ -68,7 +68,7 @@ def cmd_build(args) -> int:
 def cmd_winprob(args) -> int:
     from .winprob import build
     try:
-        build(tuple(args.formats), Path(args.out))
+        build(tuple(args.formats), Path(args.out), genders=tuple(args.genders))
     except FileNotFoundError as exc:
         log.error("%s", exc)
         return 1
@@ -148,6 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_wp = sub.add_parser("winprob", help="fit and validate the win-probability models")
     p_wp.add_argument("--formats", nargs="+", default=["odi", "t20i"], choices=["odi", "t20i"])
+    add_genders(p_wp)
     p_wp.add_argument("--out", default=str(WEB_DATA_DIR))
     p_wp.set_defaults(func=cmd_winprob)
 

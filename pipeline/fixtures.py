@@ -83,7 +83,8 @@ def build_fixtures(out_dir: Path, archives: dict[str, Path] | None = None) -> di
     summary = build_dataset(out_dir, archives=paths, only_ids=ids, corpus=corpus, sha="local",
                             extra_sources=[{"id": "fixture", "used": True, "note": note}])
 
-    winprob.build(out_dir=out_dir, archives=paths)
+    winprob.build(out_dir=out_dir, archives=paths, genders=("male",),
+                  venue_key=corpus.venues.key)
 
     items = ((fmt, mid, raw) for fmt in FORMATS
              for mid, raw in iter_raw(fmt, gender="male", path=paths[fmt]) if mid in ids)

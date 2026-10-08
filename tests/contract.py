@@ -390,7 +390,7 @@ WIN_MODEL = Obj({
     "validation": Obj({"trainMatches": Int(), "testMatches": Int(),
                        "halfLifeSelection": Arr(Any()),
                        "firstInnings": SCORE_SUMMARY, "chase": SCORE_SUMMARY}),
-    "venues": Map(Obj({"matches": Int(), "averageFirstInnings": NUM, "par": Int()})),
+    "venues": Map(Obj({"matches": Int(), "averageFirstInnings": NUM, "par": Int(None)})),
     "golden": Arr(Obj({"ballsLeft": Int(), "wickets": Int(), "runs": Int(), "need": Int(),
                        "chase": Num(0, 1), "battingFirst": Num(0, 1),
                        "projected": Tup(NUM, NUM, NUM)})),

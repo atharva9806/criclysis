@@ -38,9 +38,122 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - name: Unit tests (vitest)
+        run: npm test
       - name: Build
         run: npm run build
         env:
           # Pages render on demand, so the build never connects; the URL
           # only has to be well formed.
           DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+
+  # docs/ARCHITECTURE.md §5.4 D2: migrate an empty database, import a fixture,
+  # import it again and assert nothing changed (§3.3), then smoke-test a
+  # production build. It waits for the importer (stream B, B1): until
+  # web/scripts/import/index.mjs exists, the job only checks out and passes.
+  e2e:
+    name: End to end (import, build, smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+      # Only for the server started below; not a real secret.
+      REVALIDATE_SECRET: e2e-revalidate-secret
+      NEXT_TELEMETRY_DISABLED: "1"
+    defaults:
+      run:
+        shell: bash
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for the importer
+        id: gate
+        run: |
+          if [ -f scripts/import/index.mjs ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=e2e skipped::web/scripts/import/index.mjs does not exist yet. The end-to-end steps start running when the importer lands."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - if: steps.gate.outputs.ready == 'true'
+        run: npm ci
+
+      # fixtures/data-out-v1 is the v1 men's sample. When stream A commits the
+      # contract-complete v2 fixture (fixtures/data-out, A1), that is used
+      # instead, because the importer requires schemaVersion 2 (§3.2).
+      - name: Choose the fixture
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          data=../fixtures/data-out-v1
+          if [ -f ../fixtures/data-out/manifest.json ]; then
+            data=../fixtures/data-out
+          fi
+          echo "E2E_DATA=$data" >> "$GITHUB_ENV"
+          echo "Importing $data"
+
+      - name: Migrate an empty database
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run db:migrate
+
+      - name: Import the fixture
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run import -- --data "$E2E_DATA"
+
+      - name: Import it again and assert nothing changed
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          npm run import -- --data "$E2E_DATA"
+          if ! command -v psql > /dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          fi
+          ../scripts/ci/assert-import-unchanged.sh
+
+      - name: Build
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run build
+
+      - name: Start the production server
+        if: steps.gate.outputs.ready == 'true'
+        run: nohup npm run start -- --port 3000 > "$RUNNER_TEMP/next-start.log" 2>&1 &
+
+      - name: Smoke test
+        if: steps.gate.outputs.ready == 'true'
+        run: ../scripts/ci/smoke.sh -w 90 http://127.0.0.1:3000
+
+      - name: Check the revalidate endpoint
+        if: steps.gate.outputs.ready == 'true' && hashFiles('web/src/app/api/revalidate/route.ts') != ''
+        run: |
+          url=http://127.0.0.1:3000/api/revalidate
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$url" -H 'x-revalidate-secret: wrong')
+          if [[ $code == 2* ]]; then
+            echo "::error title=revalidate::POST /api/revalidate accepted a wrong secret (HTTP $code)"
+            exit 1
+          fi
+          curl -fsS -X POST "$url" -H "x-revalidate-secret: $REVALIDATE_SECRET"
+
+      - name: Show the server log
+        if: failure() && steps.gate.outputs.ready == 'true'
+        run: cat "$RUNNER_TEMP/next-start.log" || true

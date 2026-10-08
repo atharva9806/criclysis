@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
 # Smoke-test a running Criclysis server (`next build && next start`).
 #
-#   scripts/ci/smoke.sh [-w SECONDS] [-f ROUTES_FILE] BASE_URL [ROUTE ...]
+#   scripts/ci/smoke.sh [-w SECONDS] [-f ROUTES_FILE] BASE_URL [ROUTE[|TEXT] ...]
 #
 #   -w SECONDS     first wait up to SECONDS for the server to answer at all
 #   -f ROUTES_FILE routes to check when none are given on the command line
 #                  (default: smoke-routes.txt next to this script)
 #
-# Every route must answer HTTP 200 (redirects are not followed), and its body
-# must not contain the word NaN or undefined. For HTML, <script> and <style>
-# blocks and comments are removed before that check, because the React Server
-# Components payload legitimately encodes undefined as "$undefined".
+# A route fails when
+#   - the status is not 200 (redirects are not followed);
+#   - the HTML has <meta name="robots" content="noindex">, which Next adds when
+#     a page calls notFound(), or an error "digest" (also escaped, \"digest\",
+#     or data-dgst=), which is how Next reports a server error. Under
+#     loading.tsx a page streams, so both still arrive with status 200 and
+#     only the loading fallback in the markup;
+#   - the body contains the word NaN or undefined. In HTML, <script> and
+#     <style> blocks and comments are ignored, because the React Server
+#     Components payload legitimately encodes undefined as "$undefined";
+#   - the expected TEXT (case-insensitive) is missing. In HTML it is looked for
+#     in what the page rendered: <head>, <nav> and <footer> are ignored, so the
+#     site navigation cannot satisfy it.
 #
 # Each line of the routes file is
 #
-#   <route> [<path> ...]
+#   <route> | <expected text> | [<path> ...]
 #
 # A route is checked only when every listed path exists, relative to the
 # repository root, so a route joins the smoke test when its page lands. Routes
@@ -27,6 +36,13 @@ repo_root=$(cd "$script_dir/../.." && pwd)
 
 usage() {
   sed -n '4,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+trim() {
+  local s=$1
+  s=${s#"${s%%[![:space:]]*}"}
+  s=${s%"${s##*[![:space:]]}"}
+  printf '%s' "$s"
 }
 
 wait_secs=0
@@ -59,38 +75,79 @@ annotate() {
 }
 
 routes=()
+expects=()
 skipped=0
 if [ $# -gt 0 ]; then
-  routes=("$@")
+  for arg in "$@"; do
+    routes+=("$(trim "${arg%%|*}")")
+    if [[ $arg == *"|"* ]]; then
+      expects+=("$(trim "${arg#*|}")")
+    else
+      expects+=("")
+    fi
+  done
 else
   if [ ! -f "$routes_file" ]; then
     echo "smoke: routes file not found: $routes_file" >&2
     exit 2
   fi
   while IFS= read -r line || [ -n "$line" ]; do
-    fields=()
-    read -r -a fields <<<"$line" || true
-    if [ ${#fields[@]} -eq 0 ] || [[ ${fields[0]} == \#* ]]; then
+    route="" expect="" paths=""
+    IFS='|' read -r route expect paths <<<"$line" || true
+    route=$(trim "$route")
+    if [ -z "$route" ] || [[ $route == \#* ]]; then
       continue
     fi
+    guards=()
+    read -r -a guards <<<"$paths" || true
     missing=""
-    for path in "${fields[@]:1}"; do
+    for path in "${guards[@]}"; do
       if [ ! -e "$repo_root/$path" ]; then
         missing=$path
         break
       fi
     done
     if [ -n "$missing" ]; then
-      echo "skip  ${fields[0]}  ($missing does not exist yet)"
+      echo "skip  $route  ($missing does not exist yet)"
       skipped=$((skipped + 1))
     else
-      routes+=("${fields[0]}")
+      routes+=("$route")
+      expects+=("$(trim "$expect")")
     fi
   done <"$routes_file"
 fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+
+# strip_html MODE FILE. MODE "text" drops scripts, styles and comments;
+# "content" also drops <head>, <nav> and <footer>, leaving what the page itself
+# rendered (including content streamed into hidden <div>s).
+strip_html() {
+  perl -0777 -e '
+    my $mode = shift;
+    local $_ = <>;
+    s{<script\b[^>]*>.*?</script\s*>}{}gis;
+    s{<style\b[^>]*>.*?</style\s*>}{}gis;
+    s{<!--.*?-->}{}gs;
+    if ($mode eq "content") {
+      s{<head\b[^>]*>.*?</head\s*>}{}gis;
+      s{<footer\b[^>]*>.*?</footer\s*>}{}gis;
+      s{<nav\b[^>]*>.*?</nav\s*>}{}gis;
+    }
+    print;
+  ' "$1" "$2"
+}
+
+has_noindex() {
+  perl -0777 -ne '
+    while (/<meta\b[^>]*>/gi) {
+      my $tag = $&;
+      exit 0 if $tag =~ /\bname\s*=\s*["\x27]?robots\b/i && $tag =~ /noindex/i;
+    }
+    exit 1;
+  ' "$1"
+}
 
 if [ "$wait_secs" -gt 0 ]; then
   deadline=$((SECONDS + wait_secs))
@@ -104,45 +161,67 @@ if [ "$wait_secs" -gt 0 ]; then
   done
 fi
 
-failed=0
-checked=0
-for route in "${routes[@]}"; do
-  checked=$((checked + 1))
-  body="$tmp/body"
+# check ROUTE EXPECT: prints nothing and returns 0 when the route passes,
+# otherwise prints the reason and returns 1.
+check() {
+  local route=$1 expect=$2 body="$tmp/body" meta code ctype hits
   : >"$body"
   meta=$(curl -sS --max-time 60 -o "$body" -w '%{http_code} %{content_type}' \
     "$base$route" 2>"$tmp/err") || true
   code=${meta%% *}
   ctype=${meta#* }
   if [ "$code" != 200 ]; then
-    reason="HTTP ${code:-000}"
+    printf 'HTTP %s' "${code:-000}"
     if [ -s "$tmp/err" ]; then
-      reason="$reason: $(head -c 200 "$tmp/err")"
+      printf ': %s' "$(head -c 200 "$tmp/err")"
     fi
-    echo "FAIL  $route  $reason"
-    annotate "$route" "$reason"
-    failed=$((failed + 1))
-    continue
+    return 1
   fi
 
   if [[ $ctype == text/html* ]]; then
-    perl -0777 -pe 's{<script\b[^>]*>.*?</script\s*>}{}gis;
-                    s{<style\b[^>]*>.*?</style\s*>}{}gis;
-                    s{<!--.*?-->}{}gs' "$body" >"$tmp/text"
+    if has_noindex "$body"; then
+      printf 'the page has <meta name="robots" content="noindex"> (notFound() was called)'
+      return 1
+    fi
+    # In the RSC payload the key is escaped inside a JS string: \"digest\".
+    if grep -qE '\\?"digest\\?"|data-dgst=' "$body"; then
+      printf 'the page contains an error "digest" (a server error was rendered)'
+      return 1
+    fi
+    strip_html text "$body" >"$tmp/text"
+    strip_html content "$body" >"$tmp/content"
   else
     cp "$body" "$tmp/text"
+    cp "$body" "$tmp/content"
   fi
+
   hits=$(grep -aEo '.{0,40}\b(NaN|undefined)\b.{0,40}' "$tmp/text" | head -n 3 || true)
   if [ -n "$hits" ]; then
-    echo "FAIL  $route  body contains NaN or undefined:"
+    printf 'body contains NaN or undefined:'
     while IFS= read -r hit; do
-      echo "        ...$hit..."
+      printf '\n        ...%s...' "$hit"
     done <<<"$hits"
-    annotate "$route" "body contains NaN or undefined: $(head -n 1 <<<"$hits")"
-    failed=$((failed + 1))
-    continue
+    return 1
   fi
-  echo "ok    $route"
+
+  if [ -n "$expect" ] && ! grep -aqiF -- "$expect" "$tmp/content"; then
+    printf 'expected text "%s" is not in the rendered page' "$expect"
+    return 1
+  fi
+}
+
+failed=0
+checked=0
+for i in "${!routes[@]}"; do
+  route=${routes[$i]}
+  checked=$((checked + 1))
+  if reason=$(check "$route" "${expects[$i]}"); then
+    echo "ok    $route"
+  else
+    echo "FAIL  $route  $reason"
+    annotate "$route" "$(head -n 1 <<<"$reason")"
+    failed=$((failed + 1))
+  fi
 done
 
 echo "smoke: $checked checked, $failed failed, $skipped skipped (page not built yet)"

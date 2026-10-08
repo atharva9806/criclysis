@@ -1,41 +1,46 @@
 # Routes for scripts/ci/smoke.sh: the pages in docs/ARCHITECTURE.md §4.1 and
 # the GET API routes in §4.2. POST /api/revalidate is checked separately.
 #
-# <route>  [<path that must exist, relative to the repo root> ...]
+# <route> | <expected text> | [<path that must exist, relative to the repo root> ...]
+#
+# The expected text (case-insensitive) must appear in what the page rendered,
+# outside <head>, <nav> and <footer>, so neither the site navigation nor the
+# page title can satisfy it. The texts hold for an import of
+# fixtures/data-out-v1 (men's sample: Kohli, Sharma, Starc, Zampa, Anderson,
+# Mishra; no teams or matches) and of the v2 fixture: generic headings for list
+# pages, a player name for player pages, a JSON key or name for APIs.
 #
 # A route is skipped until its page or route handler exists. Routes that need
 # v2 data (teams, matches, replays, models keyed by formatKey) also wait for
-# the v2 fixture, fixtures/data-out, which the e2e job imports when present.
-# The ids are in both fixtures: Kohli and Sharma, and match 1384439 (the 2023
-# ODI World Cup final, India v Australia).
+# fixtures/data-out, which the e2e job imports instead of data-out-v1 once it
+# exists. Match 1384439 is the 2023 ODI World Cup final, India v Australia.
 
-/                                                     web/src/app/page.tsx
-/?gender=female                                       web/src/app/page.tsx
-/players                                              web/src/app/players/page.tsx
-/players?gender=male&format=odi&sort=runs&page=1      web/src/app/players/page.tsx
-/players/v-kohli-ba607b88                             web/src/app/players/[slug]/page.tsx
-/players/v-kohli-ba607b88?f=odi                       web/src/app/players/[slug]/page.tsx
-/compare?a=v-kohli-ba607b88&b=rg-sharma-740742ef&f=odi web/src/app/compare/page.tsx
-/strategy                                             web/src/app/strategy/page.tsx
-/teams                                                web/src/app/teams/page.tsx
-/teams?gender=female                                  web/src/app/teams/page.tsx
-/teams/india-m?f=odi                                  web/src/app/teams/[teamId]/page.tsx fixtures/data-out/manifest.json
-/teams/india-m/vs/australia-m?f=odi                   web/src/app/teams/[teamId]/vs/[oppId]/page.tsx fixtures/data-out/manifest.json
-/matches                                              web/src/app/matches/page.tsx
-/matches?gender=male&format=odi                       web/src/app/matches/page.tsx
-/matches/1384439                                      web/src/app/matches/[id]/page.tsx fixtures/data-out/manifest.json
-/live                                                 web/src/app/live/page.tsx
-/live/1384439                                         web/src/app/live/[matchId]/page.tsx fixtures/data-out/manifest.json
-/method                                               web/src/app/method/page.tsx
+/                                                      | ODI         | web/src/app/page.tsx
+/players                                               | Players     | web/src/app/players/page.tsx
+/players?gender=male&format=odi&sort=runs&page=1       | Players     | web/src/app/players/page.tsx
+/players/v-kohli-ba607b88                              | Kohli       | web/src/app/players/[slug]/page.tsx
+/players/v-kohli-ba607b88?f=odi                        | Kohli       | web/src/app/players/[slug]/page.tsx
+/compare?a=v-kohli-ba607b88&b=rg-sharma-740742ef&f=odi | Compare     | web/src/app/compare/page.tsx
+/strategy                                              | Strategy    | web/src/app/strategy/page.tsx
+/teams                                                 | Teams       | web/src/app/teams/page.tsx
+/teams?gender=female                                   | Teams       | web/src/app/teams/page.tsx
+/teams/india-m?f=odi                                   | India       | web/src/app/teams/[teamId]/page.tsx fixtures/data-out/manifest.json
+/teams/india-m/vs/australia-m?f=odi                    | Australia   | web/src/app/teams/[teamId]/vs/[oppId]/page.tsx fixtures/data-out/manifest.json
+/matches                                               | Matches     | web/src/app/matches/page.tsx
+/matches?gender=male&format=odi                        | Matches     | web/src/app/matches/page.tsx
+/matches/1384439                                       | Australia   | web/src/app/matches/[id]/page.tsx fixtures/data-out/manifest.json
+/live                                                  | Replay      | web/src/app/live/page.tsx
+/live/1384439                                          | Australia   | web/src/app/live/[matchId]/page.tsx fixtures/data-out/manifest.json
+/method                                                | Cricsheet   | web/src/app/method/page.tsx
 
-/api/health                                           web/src/app/api/health/route.ts
-/api/meta                                             web/src/app/api/meta/route.ts
-/api/players                                          web/src/app/api/players/route.ts
-/api/players/v-kohli-ba607b88                         web/src/app/api/players/[slug]/route.ts
-/api/teams                                            web/src/app/api/teams/route.ts
-/api/teams/india-m                                    web/src/app/api/teams/[teamId]/route.ts fixtures/data-out/manifest.json
-/api/matches                                          web/src/app/api/matches/route.ts
-/api/matches/1384439                                  web/src/app/api/matches/[id]/route.ts fixtures/data-out/manifest.json
-/api/replays/1384439                                  web/src/app/api/replays/[id]/route.ts fixtures/data-out/manifest.json
-/api/replays/1384439/context                          web/src/app/api/replays/[id]/context/route.ts fixtures/data-out/manifest.json
-/api/models/odi-m                                     web/src/app/api/models/[formatKey]/route.ts fixtures/data-out/manifest.json
+/api/health                                            | "ok":true   | web/src/app/api/health/route.ts
+/api/meta                                              | "buildId"   | web/src/app/api/meta/route.ts
+/api/players                                           | Kohli       | web/src/app/api/players/route.ts
+/api/players/v-kohli-ba607b88                          | Kohli       | web/src/app/api/players/[slug]/route.ts
+/api/teams                                             | India       | web/src/app/api/teams/route.ts fixtures/data-out/manifest.json
+/api/teams/india-m                                     | India       | web/src/app/api/teams/[teamId]/route.ts fixtures/data-out/manifest.json
+/api/matches                                           | "formatKey" | web/src/app/api/matches/route.ts fixtures/data-out/manifest.json
+/api/matches/1384439                                   | Australia   | web/src/app/api/matches/[id]/route.ts fixtures/data-out/manifest.json
+/api/replays/1384439                                   | Australia   | web/src/app/api/replays/[id]/route.ts fixtures/data-out/manifest.json
+/api/replays/1384439/context                           | "formatKey" | web/src/app/api/replays/[id]/context/route.ts fixtures/data-out/manifest.json
+/api/models/odi-m                                      | "theta"     | web/src/app/api/models/[formatKey]/route.ts fixtures/data-out/manifest.json

@@ -4,11 +4,13 @@
 #   DATABASE_URL=postgres://... scripts/ci/assert-import-unchanged.sh
 #
 # Run it right after importing the same directory twice. It reads dataset_meta
-# (§2): each complete import records its inserted, updated and deleted row
-# counts per table in the `changes` jsonb column. The check passes when
-#   - the latest complete import's `changes` holds only zeros, and
+# (§2): each complete import records {table: {inserted, updated, deleted}} in
+# the `changes` jsonb column, listing only tables with a non-zero count, so an
+# import that changed nothing stores {}. The check passes when
+#   - every number in the latest complete import's `changes` is 0 (so {}
+#     passes), and
 #   - the import before it changed at least one row, which shows the counts
-#     are real rather than always zero.
+#     are real rather than always empty.
 # Needs psql.
 set -euo pipefail
 

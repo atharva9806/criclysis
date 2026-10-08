@@ -9,6 +9,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   pipeline:
     name: Pipeline tests (Python)
@@ -21,6 +24,26 @@ jobs:
       # Standard library only - nothing to install.
       - name: Unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
+
+  scripts:
+    name: CI scripts (plan and smoke tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Shellcheck
+        run: |
+          if command -v shellcheck > /dev/null; then
+            shellcheck scripts/ci/*.sh scripts/ci/tests/*.sh
+          else
+            echo "::notice::shellcheck is not installed on this runner; skipped"
+          fi
+      - name: Refresh plan tests
+        run: scripts/ci/tests/test_refresh_plan.sh
+      - name: Smoke script tests
+        run: scripts/ci/tests/test_smoke.sh
 
   web:
     name: Web (typecheck, lint, build)
@@ -101,9 +124,10 @@ jobs:
       - if: steps.gate.outputs.ready == 'true'
         run: npm ci
 
-      # fixtures/data-out-v1 is the v1 men's sample. When stream A commits the
-      # contract-complete v2 fixture (fixtures/data-out, A1), that is used
-      # instead, because the importer requires schemaVersion 2 (§3.2).
+      # fixtures/data-out-v1 is the v1 men's sample; the importer accepts it
+      # with a warning. Once stream A commits the contract-complete v2 fixture
+      # (fixtures/data-out, A1), that is imported instead, and the smoke routes
+      # that need teams, matches and replays switch on with it.
       - name: Choose the fixture
         if: steps.gate.outputs.ready == 'true'
         run: |

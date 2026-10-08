@@ -54,7 +54,9 @@ export default function CompareClient({ players }: { players: PlayerSummary[] })
   const winsA = ATTRS.filter(([, k]) => Number(a[k]) > Number(b[k])).length;
   const winsB = ATTRS.filter(([, k]) => Number(b[k]) > Number(a[k])).length;
 
-  const Head = ({ p, color, k }: { p: PlayerSummary; color: string; k: "a" | "b" }) => (
+  // A render helper, not a component: defining a component inside render
+  // remounts it on every update, which resets the <select> mid-interaction.
+  const head = ({ p, color, k }: { p: PlayerSummary; color: string; k: "a" | "b" }) => (
     <div className="card flex-1 p-6" style={{ borderTop: `4px solid ${color}` }}>
       <select value={p.slug} onChange={(e) => set(k, e.target.value)} className="w-full rounded-full bg-[#e8e8ed] px-4 py-2.5 text-sm font-medium">
         {players.map((x) => (
@@ -76,14 +78,14 @@ export default function CompareClient({ players }: { players: PlayerSummary[] })
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row">
-        <Head p={a} color="#0071e3" k="a" />
+        {head({ p: a, color: "#0071e3", k: "a" })}
         <div className="grid place-items-center text-center">
           <div className="rounded-full bg-[#1d1d1f] px-5 py-3 text-white">
             <p className="text-2xl font-semibold tabular-nums">{winsA} – {winsB}</p>
             <p className="text-[10px] uppercase tracking-wider text-white/60">attributes won</p>
           </div>
         </div>
-        <Head p={b} color="#ff375f" k="b" />
+        {head({ p: b, color: "#ff375f", k: "b" })}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

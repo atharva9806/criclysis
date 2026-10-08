@@ -17,7 +17,8 @@ import { config } from "dotenv";
 import pg from "pg";
 import { sha256Bytes } from "./lib/hash.mjs";
 import { mapMatch, mapPlayer, mapPlayerFormat, mapTeam, mapTeamSummary, mapVenue, mapWinModel, replayStats } from "./lib/mappers.mjs";
-import { formatKeyOf, openSource } from "./lib/source.mjs";
+import { assertLive, dedupePlayers, inputCounts, shrinkProblems } from "./lib/guards.mjs";
+import { openSource } from "./lib/source.mjs";
 import { deletePlayerFormats, insertRows, upsertRows } from "./lib/sql.mjs";
 
 const LOCK_KEY = 4242;
@@ -25,7 +26,6 @@ const PLAYER_BATCH = 50;
 const REPLAY_BATCH = 200;
 const VACUUM_EVERY = 1000;
 const KEEP_META_ROWS = 30;
-const SHRINK_LIMIT = 0.95;
 const STATS_TABLES = ["innings", "yearly_stats", "splits", "dismissal_counts"];
 const ANALYSIS_TABLES = ["traits", "profile_dimensions"];
 const PF_TABLES = [...STATS_TABLES, ...ANALYSIS_TABLES, "career_stats"];
@@ -85,33 +85,6 @@ async function tx(client, fn) {
   }
 }
 
-/** Per-formatKey input counts, used by the shrink guard and stored in dataset_meta.counts. */
-function inputCounts(src) {
-  const formats = {};
-  const bump = (fk, k) => {
-    formats[fk] ??= {};
-    formats[fk][k] = (formats[fk][k] ?? 0) + 1;
-  };
-  for (const p of src.playersIndex ?? []) {
-    for (const fmt of Object.keys(p.formats ?? {})) bump(formatKeyOf(fmt, p.gender ?? "male"), "players");
-  }
-  for (const m of src.matches ?? []) bump(m.formatKey ?? formatKeyOf(m.format, m.gender), "matches");
-  return formats;
-}
-
-function shrinkCheck(prev, now, formatKeys) {
-  const problems = [];
-  for (const [fk, before] of Object.entries(prev ?? {})) {
-    if (formatKeys && !formatKeys.includes(fk)) continue;
-    for (const k of ["players", "matches"]) {
-      if (!before[k] || now.__missing?.has(k)) continue;
-      const after = now[fk]?.[k] ?? 0;
-      if (after < before[k] * SHRINK_LIMIT) problems.push(`${fk} ${k}: ${before[k]} -> ${after}`);
-    }
-  }
-  return problems;
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   config({ quiet: true });
@@ -131,8 +104,7 @@ async function main() {
   log(`Importing ${args.data}`);
   const src = openSource(args.data, warn);
   const man = src.manifest;
-  const dataset = man.stored.provenance?.dataset;
-  if (dataset !== "live") throw new Error(`Refusing to import: manifest.provenance.dataset is ${JSON.stringify(dataset)}, not "live"`);
+  assertLive(man.stored);
   const thresholds = man.stored.thresholds;
   const selected = args.formatKeys ? new Set(args.formatKeys) : null;
   const inScope = (fk) => !selected || selected.has(fk);
@@ -163,12 +135,16 @@ async function main() {
 
   try {
     // ---------------------------------------------------- 1. shrink guard
-    const counts = inputCounts(src);
-    const missingKinds = new Set([...(src.playersIndex ? [] : ["players"]), ...(src.matches ? [] : ["matches"])]);
+    const { kept: index, dropped } = dedupePlayers(src.playersIndex);
+    if (dropped.length) {
+      warn(`${dropped.length} players.json entries repeat a person id; kept the larger sample: ${dropped.map((d) => `${d.dropped} (kept ${d.kept})`).join(", ")}`);
+    }
+    const counts = inputCounts(index, src.matches);
+    const skip = [...(src.playersIndex ? [] : ["players"]), ...(src.matches ? [] : ["matches"])];
     const { rows: prevRows } = await client.query(
       `SELECT counts FROM dataset_meta WHERE status = 'complete' ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1`,
     );
-    const problems = shrinkCheck(prevRows[0]?.counts?.formats, Object.assign({ __missing: missingKinds }, counts), args.formatKeys);
+    const problems = shrinkProblems(prevRows[0]?.counts?.formats, counts, { skip, formatKeys: args.formatKeys });
     if (problems.length) {
       const msg = `Shrink guard: counts fell more than 5% below the last complete import (${problems.join("; ")})`;
       if (!args.allowShrink) throw new Error(`${msg}. Re-run with --allow-shrink if this is expected.`);
@@ -241,7 +217,6 @@ async function main() {
     let changedPF = 0;
     let sinceVacuum = 0;
     let playersSeen = 0;
-    const index = src.playersIndex ?? [];
 
     const vacuum = async () => {
       const v = Date.now();

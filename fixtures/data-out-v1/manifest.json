@@ -1,0 +1,232 @@
+{
+  "generated": "2026-08-22T12:46:29+00:00",
+  "playerCount": 3531,
+  "formats": {
+    "test": {
+      "label": "Test",
+      "archive": "tests_json.zip",
+      "innings_limit": 4,
+      "balls_per_innings": null,
+      "white_ball": false,
+      "format": "test",
+      "matches": 884,
+      "deliveries": 1704967,
+      "players": 1055,
+      "venues": 170,
+      "bowlersMissingStyle": 10,
+      "firstDate": "2001-12-19",
+      "lastDate": "2026-06-25"
+    },
+    "odi": {
+      "label": "ODI",
+      "archive": "odis_json.zip",
+      "innings_limit": 2,
+      "balls_per_innings": 300,
+      "white_ball": true,
+      "format": "odi",
+      "matches": 2548,
+      "deliveries": 1351072,
+      "players": 1971,
+      "venues": 312,
+      "bowlersMissingStyle": 45,
+      "firstDate": "2002-06-27",
+      "lastDate": "2026-06-16"
+    },
+    "t20i": {
+      "label": "T20I",
+      "archive": "t20s_json.zip",
+      "innings_limit": 2,
+      "balls_per_innings": 120,
+      "white_ball": true,
+      "format": "t20i",
+      "matches": 3440,
+      "deliveries": 775240,
+      "players": 4517,
+      "venues": 333,
+      "bowlersMissingStyle": 607,
+      "firstDate": "2005-02-17",
+      "lastDate": "2026-06-28"
+    }
+  },
+  "phases": {
+    "test": [
+      {
+        "key": "new_ball",
+        "from": 0,
+        "to": 20,
+        "label": "New ball (1-20)"
+      },
+      {
+        "key": "old_ball",
+        "from": 20,
+        "to": 60,
+        "label": "Old ball (21-60)"
+      },
+      {
+        "key": "second_new",
+        "from": 60,
+        "to": 1000,
+        "label": "Second new ball (80+)"
+      }
+    ],
+    "odi": [
+      {
+        "key": "powerplay",
+        "from": 0,
+        "to": 10,
+        "label": "Powerplay (1-10)"
+      },
+      {
+        "key": "middle",
+        "from": 10,
+        "to": 40,
+        "label": "Middle (11-40)"
+      },
+      {
+        "key": "death",
+        "from": 40,
+        "to": 50,
+        "label": "Death (41-50)"
+      }
+    ],
+    "t20i": [
+      {
+        "key": "powerplay",
+        "from": 0,
+        "to": 6,
+        "label": "Powerplay (1-6)"
+      },
+      {
+        "key": "middle",
+        "from": 6,
+        "to": 15,
+        "label": "Middle (7-15)"
+      },
+      {
+        "key": "death",
+        "from": 15,
+        "to": 20,
+        "label": "Death (16-20)"
+      }
+    ]
+  },
+  "bowlingTypes": {
+    "rf": {
+      "label": "Right-arm fast",
+      "family": "pace",
+      "arm": "right",
+      "swing": "away_to_rhb"
+    },
+    "rfm": {
+      "label": "Right-arm fast-medium",
+      "family": "pace",
+      "arm": "right",
+      "swing": "away_to_rhb"
+    },
+    "rm": {
+      "label": "Right-arm medium",
+      "family": "pace",
+      "arm": "right",
+      "swing": "away_to_rhb"
+    },
+    "lf": {
+      "label": "Left-arm fast",
+      "family": "pace",
+      "arm": "left",
+      "swing": "into_rhb"
+    },
+    "lfm": {
+      "label": "Left-arm fast-medium",
+      "family": "pace",
+      "arm": "left",
+      "swing": "into_rhb"
+    },
+    "lm": {
+      "label": "Left-arm medium",
+      "family": "pace",
+      "arm": "left",
+      "swing": "into_rhb"
+    },
+    "ob": {
+      "label": "Off break",
+      "family": "spin",
+      "arm": "right",
+      "turn": "into_rhb"
+    },
+    "lb": {
+      "label": "Leg break",
+      "family": "spin",
+      "arm": "right",
+      "turn": "away_from_rhb"
+    },
+    "sla": {
+      "label": "Slow left-arm orthodox",
+      "family": "spin",
+      "arm": "left",
+      "turn": "away_from_rhb"
+    },
+    "slc": {
+      "label": "Left-arm wrist spin",
+      "family": "spin",
+      "arm": "left",
+      "turn": "into_rhb"
+    }
+  },
+  "thresholds": {
+    "minBallsSplit": 60,
+    "minBallsClaim": 150,
+    "minBallsCohort": 600,
+    "minBallsBowledSplit": 90,
+    "minBallsBowledClaim": 240,
+    "minBallsBowledCohort": 900,
+    "strengthPercentile": 70.0,
+    "weaknessPercentile": 30.0
+  },
+  "sources": {
+    "cricsheet": {
+      "name": "Cricsheet",
+      "base": "https://cricsheet.org",
+      "licence": "CC BY 4.0",
+      "role": "Ball-by-ball match data (primary source for every split on this site)",
+      "bulk": true
+    },
+    "espncricinfo": {
+      "name": "ESPNcricinfo",
+      "base": "https://www.espncricinfo.com",
+      "licence": "Proprietary - see site terms",
+      "role": "Player profile metadata (bowling style, batting hand, role) and career aggregates",
+      "bulk": false
+    },
+    "icc": {
+      "name": "ICC",
+      "base": "https://www.icc-cricket.com",
+      "licence": "Proprietary - see site terms",
+      "role": "Official team and player rankings",
+      "bulk": false
+    }
+  },
+  "provenance": {
+    "sources": [
+      {
+        "id": "cricsheet",
+        "used": true,
+        "note": "Ball-by-ball data for every split on the site (CC BY 4.0)"
+      },
+      {
+        "id": "espncricinfo",
+        "used": false,
+        "note": "Not contacted in this build"
+      }
+    ],
+    "enrichment": {
+      "requested": 5296,
+      "fromCache": 3857,
+      "fromCurated": 0,
+      "fromCricinfo": 0,
+      "unresolved": 1439,
+      "blocked": false,
+      "errors": 0
+    },
+    "dataset": "live"
+  }
+}

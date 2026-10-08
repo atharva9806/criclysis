@@ -15,12 +15,21 @@
 #   winprob           `winprob --genders` exists                        (A6)
 #   replays           `replays --all --genders` exists                  (A7)
 #   golden            web/src/lib/winprob/golden.test.ts exists, and winprob
-#   check_fingerprint web/scripts/import/check-fingerprint.mjs exists, and
-#                     fingerprint, import, and force is off
-#   migrate           web/drizzle/meta/_journal.json exists, and import
-#   import            web/scripts/import/index.mjs exists, build_mode is
-#                     "genders", the DATABASE_URL secret is set and the
-#                     dispatch did not say import=false
+#   migrate           imports are allowed (not a dispatch with import=false),
+#                     the DATABASE_URL secret is set and
+#                     web/drizzle/meta/_journal.json exists. It does not wait
+#                     for the import: it is idempotent and also runs when the
+#                     archives are unchanged, so a migrate run dropped by the
+#                     concurrency group is caught up the next day
+#   import            imports are allowed, the DATABASE_URL secret is set, and
+#                     every part of a complete v2 build exists: build_mode is
+#                     "genders", winprob, replays, fingerprint, golden and
+#                     web/scripts/import/index.mjs. The importer treats a
+#                     missing winprob.json or replays as optional and would
+#                     still record a complete run, so a partial build is never
+#                     imported
+#   check_fingerprint web/scripts/import/check-fingerprint.mjs exists, import,
+#                     and force is off
 #   revalidate        import, and the REVALIDATE_SECRET secret and the SITE_URL
 #                     variable are set
 #   node              any web step above runs (setup-node and npm ci)
@@ -91,14 +100,34 @@ decide golden "$golden" "$(pick "$golden" \
   "\`npm run test:golden\` against the new winprob.json" \
   "needs web/src/lib/winprob/golden.test.ts (C1) and \`winprob --genders\`")"
 
+migrate=false
+if ! on "$do_import"; then
+  migrate_reason="dispatched with import=false"
+elif ! on "$has_db"; then
+  migrate_reason="secret DATABASE_URL is not set"
+elif [ ! -f web/drizzle/meta/_journal.json ]; then
+  migrate_reason="waiting for web/drizzle/meta/_journal.json (B1)"
+else
+  migrate=true
+  migrate_reason="\`npm run db:migrate\`; idempotent, so it runs even when the archives are unchanged"
+fi
+decide migrate "$migrate" "$migrate_reason"
+
+# Only a complete v2 build is imported (see `import` in the header).
+waiting=()
+on "$build_genders" || waiting+=("\`build --genders\` (A3)")
+on "$winprob" || waiting+=("\`winprob --genders\` (A6)")
+on "$replays" || waiting+=("\`replays --all --genders\` (A7)")
+on "$fingerprint" || waiting+=("\`fingerprint\` (A8)")
+[ -f web/src/lib/winprob/golden.test.ts ] || waiting+=("web/src/lib/winprob/golden.test.ts (C1)")
+[ -f web/scripts/import/index.mjs ] || waiting+=("web/scripts/import/index.mjs (B1)")
+
 import=false
-import_reason=""
 if ! on "$do_import"; then
   import_reason="dispatched with import=false: data/out* is uploaded instead"
-elif [ ! -f web/scripts/import/index.mjs ]; then
-  import_reason="waiting for web/scripts/import/index.mjs (B1)"
-elif ! on "$build_genders"; then
-  import_reason="the pipeline does not build v2 output yet (no \`build --genders\`)"
+elif [ ${#waiting[@]} -gt 0 ]; then
+  waiting_list=$(printf ', %s' "${waiting[@]}")
+  import_reason="waiting for ${waiting_list:2}"
 elif ! on "$has_db"; then
   import_reason="secret DATABASE_URL is not set"
 else
@@ -112,20 +141,12 @@ if ! on "$import"; then
   check_reason="only runs before an import"
 elif on "$force"; then
   check_reason="force=true: rebuild and import even if unchanged"
-elif ! on "$fingerprint"; then
-  check_reason="needs \`python -m pipeline fingerprint\` (A8)"
 elif [ ! -f web/scripts/import/check-fingerprint.mjs ]; then
   check_reason="waiting for web/scripts/import/check-fingerprint.mjs (B)"
 else
   check_fingerprint=true
 fi
 decide check_fingerprint "$check_fingerprint" "$check_reason"
-
-migrate=false
-if on "$import" && [ -f web/drizzle/meta/_journal.json ]; then migrate=true; fi
-decide migrate "$migrate" "$(pick "$migrate" \
-  "\`npm run db:migrate\` before the import" \
-  "runs before an import, once web/drizzle/meta/_journal.json exists")"
 
 decide import "$import" "$import_reason"
 

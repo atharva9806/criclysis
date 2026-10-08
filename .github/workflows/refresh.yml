@@ -14,9 +14,19 @@ name: Daily data refresh
 #
 # Failures never touch the site: every step only runs if all earlier steps
 # passed, so a failed fetch, build or golden check means the import never
-# starts. The importer commits in small transactions behind an advisory lock
-# (§3.2, §3.3), so a failed import stops at a batch boundary and the site keeps
-# serving its current data.
+# starts. Only a complete v2 build is imported: the import waits until build,
+# winprob and replays (all with --genders), fingerprint and the golden test
+# all exist. The importer commits in small transactions behind an advisory
+# lock (§3.2, §3.3), so a failed import stops at a batch boundary and the site
+# keeps serving its current data.
+#
+# Dropped runs: GitHub keeps at most one *pending* run per concurrency group,
+# and a newer queued run cancels the one that is waiting (a running one is
+# never cancelled). So a scheduled refresh waiting behind a long run can be
+# dropped by a later dispatch or migrations push, and a waiting migrate run by
+# a later refresh. Nothing is lost: the refresh runs `db:migrate` (idempotent)
+# whenever imports are allowed, even when the archives are unchanged, and the
+# next day's run, or a manual "Run workflow", picks up the data.
 #
 # Inactivity (§7 R6): GitHub automatically disables scheduled workflows in a
 # public repository after 60 days without repository activity. The site then
@@ -84,6 +94,31 @@ jobs:
         id: plan
         run: scripts/ci/refresh-plan.sh
 
+      # §3.1 step 4 (npm ci) comes first, so migrations do not depend on the
+      # fetch or the build.
+      - uses: actions/setup-node@v4
+        if: steps.plan.outputs.node == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        if: steps.plan.outputs.node == 'true'
+        working-directory: web
+        run: npm ci
+
+      # §3.1 step 7, run early: migrations are idempotent, so this runs on
+      # every run that may import, even when the archives turn out to be
+      # unchanged. That also catches up a migrate run dropped by the
+      # concurrency group (see the header).
+      - name: Migrate the database
+        if: steps.plan.outputs.migrate == 'true'
+        working-directory: web
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run db:migrate
+
       # §3.1 step 2. --no-mirror: the GitHub-release mirror has no women's
       # matches, no Afghanistan matches and stops at 2026-06-28 (§7 R2). If
       # cricsheet.org refuses or robots.txt disallows the download, this step
@@ -97,24 +132,10 @@ jobs:
         if: steps.plan.outputs.fingerprint == 'true'
         run: python -m pipeline fingerprint --out data/out/fingerprint.json
 
-      # §3.1 step 4.
-      - uses: actions/setup-node@v4
-        if: steps.plan.outputs.node == 'true'
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install web dependencies
-        if: steps.plan.outputs.node == 'true'
-        working-directory: web
-        run: npm ci
-
-      # check-fingerprint compares fingerprint.json with the latest complete
-      # dataset_meta.source_fingerprint. Contract with the script: it prints a
-      # line that is exactly `unchanged` when they match, `changed` otherwise
-      # (also when there is no complete import or no dataset_meta table yet),
-      # and exits non-zero only on an error, which fails the run.
+      # §3.1 step 4. check-fingerprint compares fingerprint.json with the
+      # latest complete dataset_meta.source_fingerprint. It prints exactly
+      # `changed` or `unchanged` (and appends changed=true|false to
+      # $GITHUB_OUTPUT); a non-zero exit is an error and fails the run.
       - name: Compare with the last import
         id: check
         if: steps.plan.outputs.check_fingerprint == 'true'
@@ -166,15 +187,8 @@ jobs:
           WINPROB_FILE: ../data/out/winprob.json
         run: npm run test:golden
 
-      # §3.1 step 7.
-      - name: Migrate the database
-        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.migrate == 'true'
-        working-directory: web
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npm run db:migrate
-
-      # The report is uploaded below, and artifacts of a public repository are
+      # §3.1 step 7 (db:migrate already ran, near the top). The report is
+      # uploaded below, and artifacts of a public repository are
       # downloadable by any GitHub user, so the secret is masked out of it.
       - name: Import into Postgres
         if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.import == 'true'

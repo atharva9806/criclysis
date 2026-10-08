@@ -18,8 +18,8 @@
  * Penalty runs (v2 `penaltyRuns`) are added to the innings total: `pre` before
  * the first ball and `post` after the last one. v1 replays have none.
  */
-import type { Ball, Fmt, FormatKey, Replay, WinModelJson } from "../contract/pipeline";
-import type { WinModel } from "../winprob/model";
+import type { Ball, Fmt, FormatKey, Replay } from "../contract/pipeline";
+import type { WinModel, WinModelCore } from "../winprob/model";
 
 export const NOT_WICKETS = new Set(["retired hurt", "retired not out"]);
 export const NON_BOWLER_DISMISSALS = new Set([
@@ -265,7 +265,7 @@ const RAIN_RULE = /\b(D\/L|DLS|VJD)\b/;
  * with no rain rule and the full scheduled and target overs, and only when a
  * model for the match's formatKey is available.
  */
-export function winProbEligibility(replay: Replay, model: WinModelJson | WinModel | null | undefined): Eligibility {
+export function winProbEligibility(replay: Replay, model: WinModelCore | WinModel | null | undefined): Eligibility {
   if (replay.format === "test") {
     return { ok: false, reason: "Win probability is modelled only for ODIs and T20Is. Tests can be drawn, so a two-outcome model does not fit them." };
   }
@@ -573,7 +573,7 @@ export function scorecardAt(tl: Timeline, rawCursor = tl.deliveries.length): Inn
     }
     // A new batter who has not faced yet still appears, at the crease.
     for (const p of atCrease) bat(p);
-    for (const row of batting.values()) row.atCrease = atCrease.has(row.person) && !row.dismissal;
+    for (const row of batting.values()) row.atCrease = !complete && atCrease.has(row.person) && !row.dismissal;
 
     cards.push({
       innings: n,
@@ -659,6 +659,8 @@ export type ChartPoint = {
   innings: number;
   label: string;
   score: string;
+  /** The delivery completed an over (or is the start point). */
+  overEnd: boolean;
 };
 
 /**
@@ -670,7 +672,7 @@ export function chartSeries(tl: Timeline, curve: WinPoint[], model: WinModel, ra
   const cursor = clampCursor(tl, rawCursor);
   const maxOvers = model.maxBalls / 6;
   const out: ChartPoint[] = [
-    { seq: -1, x: 0, p: model.battingFirst(model.maxBalls, 0, tl.innings[0]?.penaltyPre ?? 0), innings: 1, label: "0.0", score: "Start" },
+    { seq: -1, x: 0, p: model.battingFirst(model.maxBalls, 0, tl.innings[0]?.penaltyPre ?? 0), innings: 1, label: "0.0", score: "Start", overEnd: true },
   ];
   const upto = Math.min(cursor, curve.length);
   for (let i = 0; i < upto; i++) {
@@ -682,6 +684,7 @@ export function chartSeries(tl: Timeline, curve: WinPoint[], model: WinModel, ra
       innings: d.innings + 1,
       label: d.label,
       score: `${d.runs}/${d.wickets}`,
+      overEnd: d.legal && d.legalBalls % 6 === 0,
     });
   }
   if (cursor >= tl.deliveries.length && out.length > 1) {

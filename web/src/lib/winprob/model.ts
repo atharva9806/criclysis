@@ -33,6 +33,29 @@ export function sigmoid(z: number): number {
 
 export type Projection = [mean: number, low: number, high: number];
 
+/** The parts of a model the maths needs; validation and golden states are left out. */
+export type WinModelCore = Pick<
+  WinModelJson,
+  "formatKey" | "gender" | "format" | "maxBalls" | "theta" | "resources" | "dispersion" | "firstInningsWin" | "par" | "venues"
+>;
+
+/** Keys a ground's par may be stored under: the VenueKey (v2), the full name, the name before the comma (v1). */
+export function venueCandidates(venueKey?: string | null, venueName?: string | null): string[] {
+  const out = [venueKey, venueName, venueName?.split(",")[0].trim()].filter((k): k is string => !!k);
+  return [...new Set(out)];
+}
+
+/**
+ * A model trimmed for the browser: no golden states or validation, and only
+ * the venue par for this ground when one is named.
+ */
+export function slimModel(json: WinModelJson, venue?: { key?: string | null; name?: string | null }): WinModelCore {
+  const { formatKey, gender, format, maxBalls, theta, resources, dispersion, firstInningsWin, par } = json;
+  const all = json.venues ?? {};
+  const venues = venue ? Object.fromEntries(venueCandidates(venue.key, venue.name).filter((k) => all[k]).map((k) => [k, all[k]])) : all;
+  return { formatKey, gender, format, maxBalls, theta, resources, dispersion, firstInningsWin, par, venues };
+}
+
 export type VenuePar = { key: VenueKey; par: number; matches: number; averageFirstInnings: number };
 
 /** The 80% band: ±1.2816 standard deviations, as in WinModel.projected. */
@@ -46,10 +69,10 @@ export class WinModel {
   private readonly table: number[][];
   private readonly dispersion: number[];
   private readonly firstInningsWin: number[];
-  private readonly venues: WinModelJson["venues"];
+  private readonly venues: WinModelCore["venues"];
   private readonly exportedPar: number;
 
-  constructor(json: WinModelJson) {
+  constructor(json: WinModelCore) {
     this.format = json.format;
     // v1 files carry only `format` and are men's.
     this.formatKey = json.formatKey ?? `${json.format}-m`;
@@ -142,9 +165,7 @@ export class WinModel {
    * comma are tried too.
    */
   venuePar(venueKey?: string | null, venueName?: string | null): VenuePar | null {
-    const candidates = [venueKey, venueName, venueName?.split(",")[0].trim()];
-    for (const key of candidates) {
-      if (!key) continue;
+    for (const key of venueCandidates(venueKey, venueName)) {
       const v = this.venues[key];
       if (v) return { key, par: v.par, matches: v.matches, averageFirstInnings: v.averageFirstInnings };
     }

@@ -169,12 +169,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = build_parser().parse_args(argv)
-    setup_logging(args.verbose)
+    # The old single --gender option maps onto --genders ("any" is both).
     gender = getattr(args, "gender", None)
     if gender:
         args.genders = list(GENDERS) if gender == "any" else [gender]
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    setup_logging(args.verbose)
     return args.func(args)
 
 

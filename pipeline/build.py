@@ -181,7 +181,12 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
         if not path.exists():
             raise FileNotFoundError(
                 f"{path} not found - run `python -m pipeline fetch --formats {fmt}` first")
-    corpus = corpus or corpus_mod.scan(archives=archive_paths(FORMATS, archives))
+    if corpus is None:
+        # Scan every archive, whatever is being built, so VenueKeys and
+        # name ambiguity match the other commands; when the caller names the
+        # archives, those are the corpus.
+        scan_paths = archives if archives else archive_paths(FORMATS)
+        corpus = corpus_mod.scan(formats=tuple(scan_paths), archives=scan_paths)
 
     # Metadata by person id, over the whole corpus (both genders).
     metadata, stats = resolve(corpus, extra_file=styles_file)

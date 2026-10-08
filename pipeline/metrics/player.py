@@ -149,8 +149,8 @@ class PlayerFormat:
             self.bat_by_opposition[d.bowling_team].add(*args)
         if d.country:
             self.bat_by_country[d.country].add(*args)
-        if d.venue:
-            self.bat_by_venue[d.venue].add(*args)
+        if d.venue_key:
+            self.bat_by_venue[d.venue_key].add(*args)
         if home:
             self.bat_by_home[home].add(*args)
         self.bat_by_innings_no[str(d.innings)].add(*args)

@@ -165,3 +165,53 @@ def same_name_pair(copies: int = 1) -> list[tuple[str, dict]]:
                          teams={"Australia": "Ghana"}, date=day)
         out += [(f"{9000 + 2 * i}", first), (f"{9001 + 2 * i}", second)]
     return out
+
+
+def write_archive(path, matches) -> None:
+    """Write (match id, document) pairs as a Cricsheet-style zip archive."""
+    import json
+    import zipfile
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for match_id, raw in matches:
+            info = zipfile.ZipInfo(f"{match_id}.json", date_time=(2024, 1, 2, 3, 4, 5))
+            zf.writestr(info, json.dumps(raw))
+        zf.writestr(zipfile.ZipInfo("README.txt", date_time=(2024, 1, 2, 3, 4, 5)), "fixture")
+
+
+def simulated_matches(fmt: str, count: int, *, gender: str = "male", seed: int = 1,
+                      suffix: str = "", teams: int = 2) -> list[tuple[str, dict]]:
+    """Cricsheet-shaped matches from the demo simulator (fictional players).
+
+    Only the first ``teams`` simulated teams play, so the same players recur
+    often enough to clear the cohort gates. ``suffix`` is appended to every
+    player name, which gives a second, disjoint set of people (simulated
+    person ids are derived from names).
+    """
+    import random
+    from datetime import timedelta
+    from pipeline.seed import START, _pick_xi, _register_geography
+    from pipeline.simulate import TEAMS, MatchSimulator, make_roster
+    _register_geography()
+    roster = make_roster(random.Random(seed))
+    for p in roster:
+        p.name += suffix
+    by_team: dict[str, list] = {}
+    for p in roster:
+        by_team.setdefault(p.team, []).append(p)
+    rng = random.Random(seed + 1)
+    sim = MatchSimulator(fmt, rng)
+    playing = TEAMS[:teams]
+    out = []
+    prefix = 7000000 if gender == "female" else 6000000
+    for i in range(count):
+        home = playing[i % len(playing)]
+        away = playing[(i + 1 + i // len(playing)) % len(playing)]
+        if away is home:
+            away = playing[(playing.index(home) + 1) % len(playing)]
+        venue, city = home["venues"][i % len(home["venues"])]
+        day = (START + timedelta(days=7 * i)).isoformat()
+        raw = sim.match(_pick_xi(rng, by_team[home["name"]], START.year),
+                        _pick_xi(rng, by_team[away["name"]], START.year),
+                        day, venue, city, str(prefix + i), gender=gender)
+        out.append((str(prefix + i), raw))
+    return out

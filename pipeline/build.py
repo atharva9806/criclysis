@@ -95,7 +95,7 @@ class Builder:
 
         players = export_players(self.aggregators, metadata, out_dir, pretty=pretty)
 
-        ranks = featured_ranks(row["id"] for row in self.matches)
+        ranks = featured_ranks((row["id"], row["startDate"], row["event"]) for row in self.matches)
         for row in self.matches:
             row["featuredRank"] = ranks.get(row["id"])
         self.matches.sort(key=sort_key, reverse=True)

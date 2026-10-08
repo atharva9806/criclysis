@@ -26,6 +26,7 @@ from . import corpus as corpus_mod
 from . import replay, winprob
 from .build import archive_paths, build_dataset
 from .config import FORMATS
+from .enrich import resolve, split_maps
 from .sources.cricsheet import iter_raw
 
 log = logging.getLogger(__name__)
@@ -88,7 +89,9 @@ def build_fixtures(out_dir: Path, archives: dict[str, Path] | None = None) -> di
 
     items = ((fmt, mid, raw) for fmt in FORMATS
              for mid, raw in iter_raw(fmt, gender="male", path=paths[fmt]) if mid in ids)
-    replay.export_replays(items, out_dir=out_dir, venue_key=corpus.venues.key)
+    styles, hands = split_maps(resolve(corpus)[0])
+    replay.export_replays(items, out_dir=out_dir, venue_key=corpus.venues.key,
+                          styles=styles, hands=hands)
 
     models = json.loads((out_dir / "winprob.json").read_text())["formats"]
     model = winprob.model_from_json(models["odi-m"])

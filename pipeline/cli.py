@@ -3,7 +3,7 @@
     python -m pipeline fetch     --formats test odi t20i
     python -m pipeline build     --genders male female
     python -m pipeline winprob   # fit and validate the win-probability models
-    python -m pipeline replays   # export featured matches for replay mode
+    python -m pipeline replays   --all --genders male female
     python -m pipeline fixtures  --out fixtures/data-out
     python -m pipeline all       # fetch then build
 
@@ -77,11 +77,14 @@ def cmd_winprob(args) -> int:
 
 def cmd_replays(args) -> int:
     from . import corpus
-    from .replay import export_replays, featured_items
+    from .enrich import resolve, split_maps
+    from .replay import export_replays, replay_items
     try:
-        venues = corpus.scan().venues
-        index = export_replays(featured_items(args.formats, tuple(args.genders)),
-                               out_dir=Path(args.out), venue_key=venues.key)
+        scanned = corpus.scan()
+        styles, hands = split_maps(resolve(scanned)[0])
+        index = export_replays(
+            replay_items(args.formats, tuple(args.genders), all_matches=args.all),
+            out_dir=Path(args.out), venue_key=scanned.venues.key, styles=styles, hands=hands)
     except FileNotFoundError as exc:
         log.error("%s", exc)
         return 1
@@ -153,6 +156,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_wp.set_defaults(func=cmd_winprob)
 
     p_rp = sub.add_parser("replays", help="export matches for replay mode")
+    p_rp.add_argument("--all", action="store_true",
+                      help="every match, not only the featured ones")
     add_formats(p_rp, choices=tuple(FORMATS))
     add_genders(p_rp)
     p_rp.add_argument("--out", default=str(WEB_DATA_DIR))

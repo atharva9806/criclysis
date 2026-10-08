@@ -31,6 +31,7 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+import re
 from pathlib import Path
 
 from .config import SCHEMA_VERSION, WEB_DATA_DIR, format_key
@@ -52,6 +53,10 @@ FEATURED = [
     ("t20i", "951373"),   # 2016 World T20 final, West Indies v England
     ("t20i", "287879"),   # 2007 World T20 final, India v Pakistan
 ]
+
+#: After the curated list, every final of these events is featured too, newest
+#: first, so new finals (men's or women's) appear without a code change.
+FEATURED_EVENTS = re.compile(r"World Cup|World T20|T20 World Cup|Champions Trophy")
 
 EXTRA_KEYS = ("wides", "noballs", "byes", "legbyes", "penalty")
 
@@ -159,11 +164,24 @@ INDEX_FIELDS = ("id", "format", "formatKey", "gender", "title", "event", "stage"
                 "date", "venue", "result")
 
 
-def featured_ranks(match_ids) -> dict[str, int]:
-    """Rank (1 = first) of every featured match among ``match_ids``."""
-    present = set(match_ids)
-    ranked = [mid for _fmt, mid in FEATURED if mid in present]
-    return {mid: i + 1 for i, mid in enumerate(ranked)}
+def is_featured_final(event: dict | None) -> bool:
+    event = event or {}
+    return event.get("stage") == "Final" and bool(FEATURED_EVENTS.search(event.get("name") or ""))
+
+
+def featured_ranks(matches) -> dict[str, int]:
+    """Rank (1 = first) of every featured match among ``matches``.
+
+    ``matches`` holds (match id, start date, event) for every match in the
+    build. Featured matches are the curated list, in its order, followed by
+    every final of the events in :data:`FEATURED_EVENTS`, newest first.
+    """
+    matches = list(matches)
+    present = {mid for mid, _date, _event in matches}
+    curated = [mid for _fmt, mid in FEATURED if mid in present]
+    finals = sorted(((date, mid) for mid, date, event in matches
+                     if mid not in curated and is_featured_final(event)), reverse=True)
+    return {mid: i + 1 for i, mid in enumerate(curated + [mid for _d, mid in finals])}
 
 
 def write_replay(out_dir: Path, replay: dict) -> int:
@@ -188,6 +206,7 @@ def export_replays(items, out_dir: Path | None = None, *, venue_key=None,
         stale.unlink()
 
     rows: dict[str, dict] = {}
+    events: list[tuple[str, str, dict]] = []
     total = 0
     for fmt, match_id, raw in items:
         info = raw.get("info", {})
@@ -195,7 +214,8 @@ def export_replays(items, out_dir: Path | None = None, *, venue_key=None,
         replay = build_replay(raw, match_id, fmt, venue_key=key, styles=styles, hands=hands)
         total += write_replay(out_dir, replay)
         rows[match_id] = {k: replay[k] for k in INDEX_FIELDS}
-    ranks = featured_ranks(rows)
+        events.append((match_id, replay["date"], info.get("event") or {}))
+    ranks = featured_ranks(events)
     index = [rows[mid] for mid in sorted(ranks, key=ranks.get)]
     (out_dir / "index.json").write_text(json.dumps(index, separators=(",", ":"),
                                                    ensure_ascii=False))
@@ -204,13 +224,15 @@ def export_replays(items, out_dir: Path | None = None, *, venue_key=None,
     return index
 
 
-def featured_items(formats, genders, archives=None):
-    """(format, match id, document) for every featured match in the archives."""
-    wanted = {mid for _fmt, mid in FEATURED}
+def replay_items(formats, genders, *, all_matches: bool = False, archives=None):
+    """(format, match id, document) for every match to replay: all of them
+    with ``all_matches``, otherwise only the candidates for featuring."""
+    curated = {mid for _fmt, mid in FEATURED}
     for fmt in formats:
         path = (archives or {}).get(fmt)
         for match_id, raw in iter_raw(fmt, gender=genders, path=path):
-            if match_id in wanted:
+            if all_matches or match_id in curated or \
+                    is_featured_final(raw.get("info", {}).get("event")):
                 yield fmt, match_id, raw
 
 

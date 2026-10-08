@@ -1,0 +1,17 @@
+{
+  "archives": {
+    "odis_json.zip": {
+      "files": 2549,
+      "sha256": "b933345c7bd67c6f9629870daa4d5a81e52e0c5a20ee64fac780b0036782db17"
+    },
+    "t20s_json.zip": {
+      "files": 3441,
+      "sha256": "2de298808415cd3fd884c2705dd8ff2fe8a3600db1c46637af6582e9c6c4b181"
+    },
+    "tests_json.zip": {
+      "files": 885,
+      "sha256": "509587a221f2e579981a17427ee8e66fc048b9f88f68c1a23ee5d686750a7a16"
+    }
+  },
+  "combined": "sha256:181590c4525c1e21cf308f73389f0a3dc7b57b96b60913bc6880906673998907"
+}

@@ -22,16 +22,21 @@ Each replay is a compact JSON file:
 Player fields are indexes into ``people``; ``id`` is the Cricsheet person id,
 which is also the player id in the analytics dataset, so a replay links
 straight to player profiles.
+
+Files are written as ``replays/<matchId>.json.gz``: gzip of the compact JSON,
+with the gzip timestamp fixed so that identical input gives identical bytes.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import logging
-import zipfile
 from pathlib import Path
 
-from .config import WEB_DATA_DIR
-from .sources.cricsheet import archive_path
+from .config import SCHEMA_VERSION, WEB_DATA_DIR, format_key
+from .matches import result_text
+from .sources.cricsheet import iter_raw
+from .venues import canonical_venue
 
 log = logging.getLogger(__name__)
 
@@ -51,26 +56,19 @@ FEATURED = [
 EXTRA_KEYS = ("wides", "noballs", "byes", "legbyes", "penalty")
 
 
-def result_text(info: dict) -> str:
-    out = info.get("outcome") or {}
-    if out.get("result") == "tie":
-        eliminator = out.get("eliminator")
-        return f"Match tied ({eliminator} won the Super Over)" if eliminator else "Match tied"
-    if out.get("result") == "no result":
-        return "No result"
-    winner = out.get("winner")
-    by = out.get("by") or {}
-    if winner and "runs" in by:
-        return f"{winner} won by {by['runs']} runs"
-    if winner and "wickets" in by:
-        return f"{winner} won by {by['wickets']} wickets"
-    return f"{winner} won" if winner else ""
+def build_replay(raw: dict, match_id: str, fmt: str, *, venue_key: str | None = None,
+                 styles: dict[str, str] | None = None,
+                 hands: dict[str, str] | None = None) -> dict:
+    """The replay document for one match.
 
-
-def build_replay(raw: dict, match_id: str, fmt: str) -> dict:
+    ``styles`` and ``hands`` map person ids to bowling type and batting hand;
+    a player's ``bt``/``bh`` is left out when it is not known.
+    """
     info = raw.get("info", {})
     registry = (info.get("registry") or {}).get("people") or {}
     teams = list(info.get("teams", []))
+    styles = styles or {}
+    hands = hands or {}
 
     people: list[dict] = []
     index: dict[str, int] = {}
@@ -80,7 +78,13 @@ def build_replay(raw: dict, match_id: str, fmt: str) -> dict:
             return None
         if name not in index:
             index[name] = len(people)
-            people.append({"id": registry.get(name, ""), "name": name, "team": team})
+            pid = registry.get(name, "")
+            entry = {"id": pid, "name": name, "team": team}
+            if styles.get(pid):
+                entry["bt"] = styles[pid]
+            if hands.get(pid) in ("right", "left"):
+                entry["bh"] = hands[pid]
+            people.append(entry)
         return index[name]
 
     # Seed people in batting order per team so squads read naturally.
@@ -111,58 +115,103 @@ def build_replay(raw: dict, match_id: str, fmt: str) -> dict:
                     wk.get("kind"),
                     person(wk.get("player_out"), bat_team) if wk else None,
                 ])
-        target = (inn.get("target") or {}).get("runs")
-        innings_out.append({"team": bat_team, "target": target, "balls": balls})
+        target = inn.get("target") or {}
+        penalty = inn.get("penalty_runs") or {}
+        innings_out.append({
+            "team": bat_team,
+            "target": target.get("runs"),
+            "targetOvers": target.get("overs"),
+            "penaltyRuns": {"pre": int(penalty.get("pre", 0)), "post": int(penalty.get("post", 0))},
+            "balls": balls,
+        })
 
     event = info.get("event") or {}
     title = " v ".join(innings.get("team", "") for innings in innings_out[:2]) or " v ".join(teams)
+    gender = info.get("gender", "male")
+    toss = info.get("toss") or {}
+    outcome = info.get("outcome") or {}
     return {
+        "schemaVersion": SCHEMA_VERSION,
         "id": match_id,
         "format": fmt,
+        "formatKey": format_key(fmt, gender),
+        "gender": gender,
         "title": title,
         "event": event.get("name", ""),
         "stage": event.get("stage") or (f"Match {event['match_number']}" if event.get("match_number") else ""),
         "date": (info.get("dates") or [""])[0],
         "venue": info.get("venue", ""),
+        "venueKey": venue_key if venue_key is not None else canonical_venue(info.get("venue", "")),
         "city": info.get("city", ""),
         "teams": teams,
-        "toss": (info.get("toss") or {}),
+        "toss": {k: toss[k] for k in ("winner", "decision") if k in toss},
         "result": result_text(info),
-        "winner": (info.get("outcome") or {}).get("winner"),
+        "winner": outcome.get("winner"),
+        "scheduledOvers": info.get("overs"),
+        "method": outcome.get("method"),
         "people": people,
         "innings": innings_out,
         "credit": "Ball-by-ball data from Cricsheet (cricsheet.org), CC BY 4.0",
     }
 
 
-def export_replays(featured: list[tuple[str, str]] = FEATURED, out_dir: Path | None = None) -> list[dict]:
+INDEX_FIELDS = ("id", "format", "formatKey", "gender", "title", "event", "stage",
+                "date", "venue", "result")
+
+
+def featured_ranks(match_ids) -> dict[str, int]:
+    """Rank (1 = first) of every featured match among ``match_ids``."""
+    present = set(match_ids)
+    ranked = [mid for _fmt, mid in FEATURED if mid in present]
+    return {mid: i + 1 for i, mid in enumerate(ranked)}
+
+
+def write_replay(out_dir: Path, replay: dict) -> int:
+    """Write one replay as gzip; returns the compressed size."""
+    data = json.dumps(replay, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    blob = gzip.compress(data, compresslevel=9, mtime=0)
+    (out_dir / f"{replay['id']}.json.gz").write_bytes(blob)
+    return len(blob)
+
+
+def export_replays(items, out_dir: Path | None = None, *, venue_key=None,
+                   styles: dict | None = None, hands: dict | None = None) -> list[dict]:
+    """Write a replay for every (format, match id, document) in ``items``,
+    plus ``replays/index.json`` listing the featured ones in rank order.
+
+    ``venue_key`` maps (venue, city) to a VenueKey; ``styles`` and ``hands``
+    map person ids to bowling type and batting hand.
+    """
     out_dir = (out_dir or WEB_DATA_DIR) / "replays"
     out_dir.mkdir(parents=True, exist_ok=True)
-    wanted: dict[str, set[str]] = {}
-    for fmt, mid in featured:
-        wanted.setdefault(fmt, set()).add(mid)
+    for stale in out_dir.glob("*.json.gz"):
+        stale.unlink()
 
-    index = []
-    for fmt, ids in wanted.items():
-        archive = archive_path(fmt)
-        if not archive.exists():
-            log.warning("%s missing - skipping %s replays", archive, fmt)
-            continue
-        with zipfile.ZipFile(archive) as zf:
-            for mid in sorted(ids):
-                name = f"{mid}.json"
-                if name not in zf.namelist():
-                    log.warning("match %s not in %s archive", mid, fmt)
-                    continue
-                replay = build_replay(json.loads(zf.read(name)), mid, fmt)
-                (out_dir / name).write_text(json.dumps(replay, separators=(",", ":")))
-                index.append({k: replay[k] for k in
-                              ("id", "format", "title", "event", "stage", "date", "venue", "result")})
-    order = {mid: i for i, (_, mid) in enumerate(featured)}
-    index.sort(key=lambda r: order.get(r["id"], 999))
-    (out_dir / "index.json").write_text(json.dumps(index, separators=(",", ":")))
-    log.info("wrote %d replays to %s", len(index), out_dir)
+    rows: dict[str, dict] = {}
+    total = 0
+    for fmt, match_id, raw in items:
+        info = raw.get("info", {})
+        key = venue_key(info.get("venue", ""), info.get("city")) if venue_key else None
+        replay = build_replay(raw, match_id, fmt, venue_key=key, styles=styles, hands=hands)
+        total += write_replay(out_dir, replay)
+        rows[match_id] = {k: replay[k] for k in INDEX_FIELDS}
+    ranks = featured_ranks(rows)
+    index = [rows[mid] for mid in sorted(ranks, key=ranks.get)]
+    (out_dir / "index.json").write_text(json.dumps(index, separators=(",", ":"),
+                                                   ensure_ascii=False))
+    log.info("wrote %d replays (%.1f MB gzipped), %d featured, to %s",
+             len(rows), total / 1e6, len(index), out_dir)
     return index
+
+
+def featured_items(formats, genders, archives=None):
+    """(format, match id, document) for every featured match in the archives."""
+    wanted = {mid for _fmt, mid in FEATURED}
+    for fmt in formats:
+        path = (archives or {}).get(fmt)
+        for match_id, raw in iter_raw(fmt, gender=genders, path=path):
+            if match_id in wanted:
+                yield fmt, match_id, raw
 
 
 def replay_states(replay: dict, max_balls: int):

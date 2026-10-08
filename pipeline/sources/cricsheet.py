@@ -8,16 +8,14 @@ can tell you they average 21 against left-arm wrist spin in the middle overs,
 which is the kind of statement this site exists to make.
 
 Attribution requirement (CC BY 4.0): any deployment must credit Cricsheet. The
-generated ``sources.json`` carries that credit and the About page renders it.
+generated ``manifest.json`` carries that credit and the Method page renders it.
 """
 from __future__ import annotations
 
-import csv
-import io
 import json
 import logging
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,7 +25,6 @@ from .. import net
 log = logging.getLogger(__name__)
 
 BASE = SOURCES["cricsheet"]["base"]
-REGISTER_URL = f"{BASE}/register/people.csv"
 
 # Cricsheet filters automated traffic, which means a download can fail from a
 # CI runner, a cloud VM or a corporate egress range while working fine from a
@@ -74,6 +71,7 @@ class Delivery:
     date: str
     season: str
     venue: str
+    venue_key: str
     city: str
     country: str
     gender: str
@@ -125,7 +123,9 @@ class MatchInfo:
     date: str
     season: str
     venue: str
+    venue_key: str
     city: str
+    country: str
     gender: str
     teams: list[str]
     winner: str | None
@@ -205,14 +205,24 @@ def _venue_country(venue: str, city: str) -> str:
     return CITY_COUNTRY.get(city, "")
 
 
-def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Delivery]]:
-    """Turn one Cricsheet match document into a MatchInfo plus flat deliveries."""
+def parse_match(raw: dict, match_id: str, fmt: str,
+                venue_key: str | None = None) -> tuple[MatchInfo, list[Delivery]]:
+    """Turn one Cricsheet match document into a MatchInfo plus flat deliveries.
+
+    ``venue_key`` is the ground's VenueKey (see :mod:`pipeline.venues`), which
+    needs the whole corpus to compute; without it the plain ground name is used.
+    """
+    from ..venues import canonical_venue
+
     info = raw.get("info", {})
     dates = info.get("dates") or [""]
     venue = info.get("venue", "")
     city = info.get("city", "")
     teams = info.get("teams", [])
     outcome = info.get("outcome", {})
+    country = _venue_country(venue, city)
+    if venue_key is None:
+        venue_key = canonical_venue(venue)
 
     match = MatchInfo(
         match_id=match_id,
@@ -220,7 +230,9 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
         date=dates[0],
         season=str(info.get("season", "")),
         venue=venue,
+        venue_key=venue_key,
         city=city,
+        country=country,
         gender=info.get("gender", "male"),
         teams=list(teams),
         winner=outcome.get("winner"),
@@ -229,7 +241,6 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
         players=info.get("players", {}) or {},
         registry=((info.get("registry") or {}).get("people") or {}),
     )
-    country = _venue_country(venue, city)
 
     deliveries: list[Delivery] = []
     for idx, inn in enumerate(raw.get("innings", [])):
@@ -274,6 +285,7 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
                     date=match.date,
                     season=match.season,
                     venue=venue,
+                    venue_key=venue_key,
                     city=city,
                     country=country,
                     gender=match.gender,
@@ -311,19 +323,30 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
     return match, deliveries
 
 
-def iter_matches(fmt: str, *, limit: int | None = None,
-                 gender: str | None = "male",
-                 path: Path | None = None) -> Iterator[tuple[MatchInfo, list[Delivery]]]:
-    """Stream every match in a format's archive.
+def _gender_filter(gender: str | Iterable[str] | None) -> frozenset[str] | None:
+    if gender is None:
+        return None
+    if isinstance(gender, str):
+        return frozenset([gender])
+    return frozenset(gender)
 
-    Yields one match at a time so that a full pass over ~20k matches never needs
-    more than one match in memory.
+
+def iter_raw(fmt: str, *, limit: int | None = None,
+             gender: str | Iterable[str] | None = "male",
+             path: Path | None = None) -> Iterator[tuple[str, dict]]:
+    """Stream (match id, Cricsheet document) for every match in an archive.
+
+    Files are read in sorted order so that every pass over an archive, and
+    therefore every build, sees the matches in the same order. ``gender`` is
+    one gender, several, or None for all; ``limit`` counts matches after the
+    gender filter.
     """
     archive = path or archive_path(fmt)
     if not archive.exists():
         raise FileNotFoundError(
             f"{archive} not found - run `python -m pipeline fetch --formats {fmt}` first"
         )
+    genders = _gender_filter(gender)
     count = 0
     with zipfile.ZipFile(archive) as zf:
         names = sorted(n for n in zf.namelist() if n.endswith(".json") and "README" not in n)
@@ -335,29 +358,27 @@ def iter_matches(fmt: str, *, limit: int | None = None,
             except (json.JSONDecodeError, KeyError) as exc:
                 log.warning("skipping unreadable %s: %s", name, exc)
                 continue
-            if gender and (raw.get("info", {}).get("gender") != gender):
-                continue
-            match_id = Path(name).stem
-            try:
-                yield parse_match(raw, match_id, fmt)
-            except Exception as exc:  # noqa: BLE001 - one bad file must not kill a run
-                log.warning("skipping %s: %s", name, exc)
+            if genders is not None and raw.get("info", {}).get("gender") not in genders:
                 continue
             count += 1
+            yield Path(name).stem, raw
 
 
-def load_register(*, use_cache: bool = True) -> dict[str, dict[str, str]]:
-    """Cricsheet's people register: person id -> identifiers on other sites.
+def iter_matches(fmt: str, *, limit: int | None = None,
+                 gender: str | Iterable[str] | None = "male",
+                 path: Path | None = None,
+                 venue_key=None) -> Iterator[tuple[MatchInfo, list[Delivery]]]:
+    """Stream every match in a format's archive, parsed.
 
-    The ``key_cricinfo`` column is what lets us line a Cricsheet player up with
-    their ESPNcricinfo profile for the metadata enrichment step.
+    Yields one match at a time so that a full pass over ~20k matches never needs
+    more than one match in memory. ``venue_key`` maps (venue, city) to a
+    VenueKey.
     """
-    text = net.get(REGISTER_URL, use_cache=use_cache)
-    reader = csv.DictReader(io.StringIO(text))  # type: ignore[arg-type]
-    out: dict[str, dict[str, str]] = {}
-    for row in reader:
-        ident = row.get("identifier")
-        if not ident:
+    for match_id, raw in iter_raw(fmt, limit=limit, gender=gender, path=path):
+        info = raw.get("info", {})
+        key = venue_key(info.get("venue", ""), info.get("city", "")) if venue_key else None
+        try:
+            yield parse_match(raw, match_id, fmt, venue_key=key)
+        except Exception as exc:  # noqa: BLE001 - one bad file must not kill a run
+            log.warning("skipping %s: %s", match_id, exc)
             continue
-        out[ident] = {k: v for k, v in row.items() if v}
-    return out

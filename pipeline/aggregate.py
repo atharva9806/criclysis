@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 
-from .config import ALL_FORMATS
+from .config import ALL_FORMATS, format_key
 from .metrics.player import BattingInnings, BowlingInnings, PlayerFormat
 from .styles import family as style_family
 from .venues import TEAM_HOME
@@ -31,11 +31,13 @@ def entry_phase(balls_faced: int) -> str:
 
 
 class Aggregator:
-    """Accumulates one format's worth of matches."""
+    """Accumulates one formatKey's worth of matches (one format, one gender)."""
 
     def __init__(self, fmt: str, styles: dict[str, str] | None = None,
-                 hands: dict[str, str] | None = None):
+                 hands: dict[str, str] | None = None, gender: str = "male"):
         self.fmt = fmt
+        self.gender = gender
+        self.format_key = format_key(fmt, gender)
         self.spec = ALL_FORMATS[fmt]
         # name -> bowling type key / batting hand, supplied by enrichment.
         self.styles = styles or {}
@@ -47,7 +49,7 @@ class Aggregator:
         self.deliveries = 0
         self.first_date = ""
         self.last_date = ""
-        self.venues: dict[str, dict] = {}
+        self.venues: set[str] = set()
         self.unknown_styles: set[str] = set()
 
     # ------------------------------------------------------------------
@@ -82,13 +84,9 @@ class Aggregator:
         for team, squad in match.players.items():
             for name in squad:
                 self.team_of[name].add(team)
-        if match.venue:
-            venue = self.venues.setdefault(match.venue, {
-                "name": match.venue, "city": match.city,
-                "country": deliveries[0].country, "matches": 0,
-                "runs": 0, "balls": 0, "wickets": 0,
-            })
-            venue["matches"] += 1
+                self.player(name).matches += 1
+        if match.venue_key:
+            self.venues.add(match.venue_key)
 
         year = (match.date or "")[:4]
 
@@ -119,12 +117,6 @@ class Aggregator:
         for key, inn in bowl_innings.items():
             inn.maidens = maidens.get(key, 0)
             self.player(key[1]).add_bowling_innings(inn)
-
-        if match.venue:
-            venue = self.venues[match.venue]
-            venue["runs"] += sum(d.runs_total for d in deliveries)
-            venue["balls"] += sum(1 for d in deliveries if d.is_legal)
-            venue["wickets"] += sum(1 for d in deliveries if d.wicket_kind)
 
     # ------------------------------------------------------------------
     def _add_delivery(self, d, match, year, order, next_position,
@@ -181,6 +173,7 @@ class Aggregator:
             inn.out = True
             inn.dismissal = d.wicket_kind or ""
             inn.dismissed_by = d.bowler if d.bowler_credited else ""
+            inn.dismissed_by_id = match.registry.get(d.bowler, "") if d.bowler_credited else ""
 
         # --- batter dismissed at the other end -----------------------------
         # A non-striker run out never faces the ball, but it is still a
@@ -235,7 +228,9 @@ class Aggregator:
 
     def summary(self) -> dict:
         return {
+            "formatKey": self.format_key,
             "format": self.fmt,
+            "gender": self.gender,
             "matches": self.matches,
             "deliveries": self.deliveries,
             "players": len(self.players),

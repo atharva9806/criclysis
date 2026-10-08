@@ -16,7 +16,7 @@ from pathlib import Path
 from pipeline.aggregate import Aggregator
 from pipeline.analyze import Cohort, analyse_player
 from pipeline.config import BOWLING_TYPES, PACE_TYPES, SPIN_TYPES
-from pipeline.export import export_all, slugify
+from pipeline.ids import slugify
 from pipeline.seed import SEED, START, _fixture_list, _pick_xi, _register_geography
 from pipeline.simulate import MatchSimulator, TEAMS, make_roster, stable_id
 from pipeline.sources.cricsheet import parse_match
@@ -52,7 +52,7 @@ class TestStableIdentity(unittest.TestCase):
         # Python salts str.__hash__ per process; ids must not depend on it.
         self.assertEqual(stable_id("A Player"), stable_id("A Player"))
         self.assertNotEqual(stable_id("A Player"), stable_id("B Player"))
-        self.assertTrue(stable_id("A Player").startswith("sim-"))
+        self.assertRegex(stable_id("A Player"), r"^[0-9a-f]{8}$")
 
     def test_slug_is_url_safe_and_stable(self):
         slug = slugify("R.G. O'Brien-Smith", "abc123def456")
@@ -198,61 +198,64 @@ class TestAnalysis(unittest.TestCase):
                         f"mean of {mean:.1f} type weaknesses per batter is indiscriminate")
 
 
+SMALL = {"test": 4, "odi": 16, "t20i": 30}
+
+
 class TestExport(unittest.TestCase):
-    def setUp(self):
-        self.dir = Path(tempfile.mkdtemp())
+    """The demo build writes every §1 file, in the contract's shape."""
 
-    def tearDown(self):
-        shutil.rmtree(self.dir, ignore_errors=True)
+    @classmethod
+    def setUpClass(cls):
+        from pipeline.seed import build_seed
+        cls.dir = Path(tempfile.mkdtemp())
+        build_seed(cls.dir, match_count=SMALL)
 
-    def test_export_writes_a_complete_dataset(self):
-        agg, roster = build_corpus(matches=80)
-        metadata = {p.name: {"bowlingType": p.bowling_type,
-                             "battingHand": p.batting_hand,
-                             "role": p.role, "country": p.team}
-                    for p in roster}
-        summary = export_all({"t20i": agg}, metadata, self.dir,
-                             provenance={"dataset": "test"})
-        self.assertGreater(summary["players"], 10)
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.dir, ignore_errors=True)
 
-        for name in ("manifest.json", "players.json", "teams.json",
-                     "venues.json", "cohorts.json"):
-            self.assertTrue((self.dir / name).exists(), name)
+    def test_output_conforms_to_the_contract(self):
+        from tests.contract import validate_dir
+        errors = validate_dir(self.dir, replays=False, winprob=False)
+        self.assertEqual(errors[:10], [], f"{len(errors)} contract violations")
 
+    def test_every_index_row_has_a_detail_file(self):
         index = json.loads((self.dir / "players.json").read_text())["players"]
-        self.assertEqual(len(index), summary["players"])
-
+        self.assertGreater(len(index), 10)
         for row in index:
-            detail = self.dir / "players" / f"{row['slug']}.json"
-            self.assertTrue(detail.exists(), f"missing detail for {row['name']}")
-            payload = json.loads(detail.read_text())
+            payload = json.loads((self.dir / "players" / f"{row['slug']}.json").read_text())
             self.assertEqual(payload["name"], row["name"])
-            self.assertIn("t20i", payload["formats"])
+            self.assertEqual(set(payload["formats"]), set(row["formats"]))
 
     def test_manifest_records_provenance_and_thresholds(self):
-        agg, roster = build_corpus(matches=60)
-        export_all({"t20i": agg}, {}, self.dir,
-                   provenance={"dataset": "demo", "notice": "simulated"})
         manifest = json.loads((self.dir / "manifest.json").read_text())
         self.assertEqual(manifest["provenance"]["dataset"], "demo")
         self.assertIn("minBallsClaim", manifest["thresholds"])
-        self.assertIn("bowlingTypes", manifest)
-        self.assertIn("phases", manifest)
+        self.assertEqual(manifest["thresholds"]["teamMinMatches"], 5)
+        self.assertEqual(set(manifest["formats"]), {"test-m", "odi-m", "t20i-m"})
         self.assertEqual(set(manifest["phases"]["t20i"][0]),
                          {"key", "from", "to", "label"})
 
+    def test_cohorts_are_keyed_by_format_key(self):
+        cohorts = json.loads((self.dir / "cohorts.json").read_text())
+        self.assertEqual(set(cohorts), {"test-m", "odi-m", "t20i-m"})
+
     def test_stale_player_files_are_removed(self):
-        agg, roster = build_corpus(matches=60)
-        (self.dir / "players").mkdir(parents=True, exist_ok=True)
-        stale = self.dir / "players" / "someone-who-left.json"
-        stale.write_text("{}")
-        export_all({"t20i": agg}, {}, self.dir)
-        self.assertFalse(stale.exists(), "a previous build's files must not linger")
+        from pipeline.seed import build_seed
+        d = Path(tempfile.mkdtemp())
+        try:
+            (d / "players").mkdir(parents=True)
+            stale = d / "players" / "someone-who-left.json"
+            stale.write_text("{}")
+            build_seed(d, match_count={"test": 1, "odi": 1, "t20i": 2})
+            self.assertFalse(stale.exists(), "a previous build's files must not linger")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
 
 class TestSeedReproducibility(unittest.TestCase):
     def test_two_builds_are_identical(self):
-        """The demo dataset must be byte-for-byte reproducible.
+        """The demo dataset must be byte-for-byte reproducible, manifest included.
 
         Otherwise every rebuild churns every player slug, which breaks any URL
         anyone has saved and makes the git diff meaningless.
@@ -261,13 +264,9 @@ class TestSeedReproducibility(unittest.TestCase):
         outs = []
         for _ in range(2):
             d = Path(tempfile.mkdtemp())
-            build_seed(d)
-            payload = {
-                p.relative_to(d).as_posix(): p.read_text()
-                for p in sorted(d.rglob("*.json"))
-                if p.name != "manifest.json"
-            }
-            outs.append(payload)
+            build_seed(d, match_count=SMALL)
+            outs.append({p.relative_to(d).as_posix(): p.read_bytes()
+                         for p in sorted(d.rglob("*")) if p.is_file()})
             shutil.rmtree(d, ignore_errors=True)
         self.assertEqual(set(outs[0]), set(outs[1]), "different files produced")
         for key in outs[0]:
@@ -298,16 +297,20 @@ class TestCuratedStyles(unittest.TestCase):
             if row["battingHand"]:
                 self.assertIn(row["battingHand"], ("left", "right"), name)
 
-    def test_curated_entries_beat_scraped_ones(self):
-        """A hand-checked correction must never be silently undone by a re-scrape."""
+    def test_curated_entries_beat_generated_ones(self):
+        """A hand-checked correction must never be undone by the generated file."""
         from pipeline import enrich
         name = next(iter(self.records))
-        cached = {name: {"bowlingType": "rm", "source": "espncricinfo"}}
-        original = enrich.load_cache
+        other = "rm" if self.records[name]["bowlingType"] != "rm" else "ob"
+        d = Path(tempfile.mkdtemp())
+        generated = d / "generated.csv"
+        generated.write_text(f"name,bowling_type,source\n{name},{other},player-meta\n")
+        original = enrich.GENERATED
         try:
-            enrich.load_cache = lambda: cached
-            resolved, _stats = enrich.resolve({name}, {}, use_cricinfo=False)
+            enrich.GENERATED = generated
+            resolved, _stats = enrich.resolve({name})
         finally:
-            enrich.load_cache = original
+            enrich.GENERATED = original
+            shutil.rmtree(d, ignore_errors=True)
         self.assertEqual(resolved[name]["bowlingType"],
                          self.records[name]["bowlingType"])

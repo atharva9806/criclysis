@@ -35,7 +35,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .config import FORMATS
+from .config import FORMATS, SCHEMA_VERSION, format_key
 from .sources.cricsheet import archive_path
 
 log = logging.getLogger(__name__)
@@ -570,9 +570,11 @@ def venue_pars(traces: list[MatchTrace], model: WinModel, min_matches: int = 5,
 # ---------------------------------------------------------------------------
 # Build and export
 # ---------------------------------------------------------------------------
-def model_to_json(model: WinModel) -> dict:
+def model_to_json(model: WinModel, gender: str = "male") -> dict:
     res = model.resources
     return {
+        "formatKey": format_key(model.fmt, gender),
+        "gender": gender,
         "format": model.fmt,
         "maxBalls": res.max_balls,
         "theta": [round(t, 6) for t in model.theta],
@@ -583,6 +585,23 @@ def model_to_json(model: WinModel) -> dict:
         "firstInningsWin": [round(p, 5) for p in model.first_innings_win],
         "par": model.par_total(),
     }
+
+
+def model_from_json(payload: dict) -> WinModel:
+    """Rebuild a model from its exported JSON, exactly as a client would.
+
+    The exported tables are rounded, so the rebuilt model differs slightly from
+    the fitted one; anything checked against a port of the model (golden
+    states, win curves) is computed from this rebuilt model, not the fitted one.
+    """
+    res = Resources(max_balls=payload["maxBalls"],
+                    table=[list(row) for row in payload["resources"]],
+                    dispersion=list(payload["dispersion"]),
+                    params=[(p["z"], p["b"]) for p in payload["resourceParams"]])
+    model = WinModel(fmt=payload["format"], resources=res, theta=list(payload["theta"]),
+                     half_life=payload.get("halfLifeYears"))
+    model.first_innings_win = list(payload["firstInningsWin"])
+    return model
 
 
 def golden_states(model: WinModel, n: int = 60) -> list[dict]:
@@ -606,15 +625,16 @@ def golden_states(model: WinModel, n: int = 60) -> list[dict]:
 
 
 def build(formats: tuple[str, ...] = LIMITED_FORMATS, out_dir: Path | None = None,
-          holdout_from: str = HOLDOUT_FROM) -> dict:
+          holdout_from: str = HOLDOUT_FROM, archives: dict[str, Path] | None = None) -> dict:
     from .config import WEB_DATA_DIR
 
     out_dir = out_dir or WEB_DATA_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    result: dict = {"generatedFrom": "Cricsheet ball-by-ball (CC BY 4.0)", "holdoutFrom": holdout_from,
+    result: dict = {"schemaVersion": SCHEMA_VERSION,
+                    "generatedFrom": "Cricsheet ball-by-ball (CC BY 4.0)", "holdoutFrom": holdout_from,
                     "formats": {}}
     for fmt in formats:
-        traces = list(iter_traces(fmt))
+        traces = list(iter_traces(fmt, path=(archives or {}).get(fmt)))
         train = [t for t in traces if t.date < holdout_from]
         test = [t for t in traces if t.date >= holdout_from]
         log.info("%s: %d usable matches (%d train, %d holdout)", fmt, len(traces), len(train), len(test))
@@ -634,7 +654,7 @@ def build(formats: tuple[str, ...] = LIMITED_FORMATS, out_dir: Path | None = Non
                                  "halfLifeSelection": selection, **validation}
         payload["venues"] = venue_pars(traces, model)
         payload["golden"] = golden_states(model)
-        result["formats"][fmt] = payload
+        result["formats"][payload["formatKey"]] = payload
         log.info("%s: half-life %s, chase Brier %.4f (baseline %.4f), first-innings Brier %.4f, par %d",
                  fmt, half_life, validation["chase"]["brier"], validation["chase"]["baselineBrier"],
                  validation["firstInnings"]["brier"], payload["par"])

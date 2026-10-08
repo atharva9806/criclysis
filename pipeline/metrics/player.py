@@ -48,6 +48,7 @@ class BattingInnings:
     chasing: bool = False
     dismissal: str = ""
     dismissed_by: str = ""
+    dismissed_by_id: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +57,7 @@ class BattingInnings:
             "f4": self.fours, "f6": self.sixes, "out": self.out,
             "pos": self.position, "inn": self.innings_no,
             "chase": self.chasing, "how": self.dismissal, "by": self.dismissed_by,
+            "byId": self.dismissed_by_id,
         }
 
 
@@ -86,6 +88,9 @@ class PlayerFormat:
     name: str
     fmt: str
     teams: set[str] = field(default_factory=set)
+    # Appearances in a Cricsheet XI (info.players), whether or not they batted
+    # or bowled.
+    matches: int = 0
 
     # --- batting ---------------------------------------------------------
     bat_overall: BatSplit = field(default_factory=BatSplit)

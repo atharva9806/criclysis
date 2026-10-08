@@ -61,10 +61,11 @@ def stable_id(name: str) -> str:
     Python salts str.__hash__ per process, so using it here made the demo
     dataset differ on every build - and with it every player slug and every
     bookmarked URL. Hashing explicitly keeps the seed reproducible, which is
-    the entire claim the demo rests on.
+    the entire claim the demo rests on. Eight hex characters, the shape of a
+    Cricsheet person id, so demo output passes the same contract checks; the
+    manifest's ``dataset: "demo"`` is what keeps it out of the database.
     """
-    digest = hashlib.sha1(name.encode()).hexdigest()[:10]
-    return f"sim-{digest}"
+    return hashlib.sha1(("sim:" + name).encode()).hexdigest()[:8]
 
 
 FIRST_NAMES = [
@@ -418,7 +419,8 @@ class MatchSimulator:
         return innings_payload, score
 
     def match(self, team_a: list[SimPlayer], team_b: list[SimPlayer],
-              date: str, venue: str, city: str, match_id: str) -> dict:
+              date: str, venue: str, city: str, match_id: str,
+              gender: str = "male") -> dict:
         year = int(date[:4])
         bat_first, bowl_first = (team_a, team_b) if self.rng.random() < 0.5 \
             else (team_b, team_a)
@@ -449,7 +451,7 @@ class MatchSimulator:
                 "balls_per_over": 6,
                 "city": city,
                 "dates": [date],
-                "gender": "male",
+                "gender": gender,
                 "match_type": {"test": "Test", "odi": "ODI", "t20i": "T20"}[self.fmt],
                 "overs": self.model["overs"],
                 "season": date[:4],

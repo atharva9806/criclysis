@@ -9,8 +9,11 @@ ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = Path(os.environ.get("CRICKET_CACHE", ROOT / ".cache"))
 RAW_DIR = CACHE_DIR / "raw"
 # Generated dataset (gitignored): built by CI and loaded into Postgres by
-# web/scripts/import-analytics.mjs.
+# web/scripts/import (docs/ARCHITECTURE.md §1 is the contract for its shape).
 WEB_DATA_DIR = Path(os.environ.get("CRICLYSIS_OUT", ROOT / "data" / "out"))
+
+#: Version of the output contract in docs/ARCHITECTURE.md §1.
+SCHEMA_VERSION = 2
 
 # ---------------------------------------------------------------------------
 # Formats
@@ -52,6 +55,20 @@ OPTIONAL_FORMATS = {
 }
 
 ALL_FORMATS = {**FORMATS, **OPTIONAL_FORMATS}
+
+# ---------------------------------------------------------------------------
+# Genders
+# ---------------------------------------------------------------------------
+# Cricsheet's archives hold men's and women's matches side by side, told apart
+# by ``info.gender``. Everything that compares players (cohorts, models) is
+# keyed by a formatKey such as "odi-w", so women are only ever compared with
+# women.
+GENDERS = {"male": "m", "female": "w"}
+
+
+def format_key(fmt: str, gender: str) -> str:
+    """'odi' + 'female' -> 'odi-w'."""
+    return f"{fmt}-{GENDERS[gender]}"
 
 # ---------------------------------------------------------------------------
 # Phase definitions (over index is 0-based)
@@ -118,6 +135,9 @@ class Thresholds:
     weakness_pct: float = 30.0
     # a claim needs to clear the cohort median by this margin to avoid noise
     min_effect: float = 0.04
+    # team win percentages and venue averages are hidden below these samples
+    team_min_matches: int = 5
+    venue_min_innings: int = 3
 
 THRESHOLDS = Thresholds()
 
@@ -147,18 +167,11 @@ SOURCES = {
         "role": "Ball-by-ball match data (primary source for every split on this site)",
         "bulk": True,
     },
-    "espncricinfo": {
-        "name": "ESPNcricinfo",
-        "base": "https://www.espncricinfo.com",
-        "licence": "Proprietary - see site terms",
-        "role": "Player profile metadata (bowling style, batting hand, role) and career aggregates",
-        "bulk": False,
-    },
-    "icc": {
-        "name": "ICC",
-        "base": "https://www.icc-cricket.com",
-        "licence": "Proprietary - see site terms",
-        "role": "Official team and player rankings",
-        "bulk": False,
+    "playermeta": {
+        "name": "Player metadata table",
+        "base": "data/player_styles.csv",
+        "licence": "See docs/DATA_SOURCES.md (not Cricsheet data)",
+        "role": "Bowling style, batting hand, role and country for the matchup splits",
+        "bulk": True,
     },
 }

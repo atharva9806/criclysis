@@ -98,9 +98,10 @@ class Delivery:
     legbyes: int
     is_legal: bool            # counts towards the over
     is_batter_ball: bool      # counts as a ball faced by the batter
-    wicket_kind: str | None
+    wicket_kind: str | None   # the first wicket on the ball, if any
     player_out: str | None
     player_out_id: str | None
+    team_wickets: int         # wickets the batting side lost on this ball
     bowler_credited: bool     # dismissal attributed to the bowler
     phase: str
     chasing: bool
@@ -146,6 +147,10 @@ NON_BOWLER_DISMISSALS = {
     "run out", "retired hurt", "retired out", "retired not out",
     "obstructing the field", "handled the ball", "timed out",
 }
+
+
+# Dismissals that do not cost the batting side a wicket.
+NOT_TEAM_WICKETS = {"retired hurt", "retired not out"}
 
 
 def archive_path(fmt: str) -> Path:
@@ -327,6 +332,8 @@ def parse_match(raw: dict, match_id: str, fmt: str,
                     wicket_kind=wicket_kind,
                     player_out=player_out,
                     player_out_id=person_id(player_out) if player_out else None,
+                    team_wickets=sum(1 for w in d.get("wickets") or []
+                                     if w.get("kind") not in NOT_TEAM_WICKETS),
                     bowler_credited=credited,
                     phase=phase_for(fmt, over),
                     chasing=chasing,

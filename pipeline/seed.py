@@ -76,7 +76,7 @@ def _register_geography() -> None:
     site look broken rather than exercised.
     """
     for team in TEAMS:
-        TEAM_HOME[team["name"]] = team["home"]
+        TEAM_HOME[team["name"]] = frozenset({team["home"]})
         for venue, city in team["venues"]:
             VENUE_COUNTRY[venue] = team["home"]
             CITY_COUNTRY[city] = team["home"]

@@ -49,6 +49,7 @@ class BattingInnings:
     dismissal: str = ""
     dismissed_by: str = ""
     dismissed_by_id: str = ""
+    team: str = ""            # the player's side (not exported per innings)
 
     def to_dict(self) -> dict:
         return {
@@ -72,6 +73,7 @@ class BowlingInnings:
     runs: int = 0
     wickets: int = 0
     maidens: int = 0
+    team: str = ""
 
     def to_dict(self) -> dict:
         return {

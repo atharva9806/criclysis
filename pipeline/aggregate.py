@@ -72,7 +72,7 @@ class Aggregator:
         home = TEAM_HOME.get(team)
         if home is None:
             return ""
-        return "home" if home == country else "away"
+        return "home" if country in home else "away"
 
     # ------------------------------------------------------------------
     def add_match(self, match, deliveries: list) -> None:
@@ -170,7 +170,7 @@ class Aggregator:
             inn = BattingInnings(
                 match_id=d.match_id, date=d.date, opposition=d.bowling_team,
                 venue=d.venue, country=d.country, position=position,
-                innings_no=d.innings, chasing=d.chasing)
+                innings_no=d.innings, chasing=d.chasing, team=d.batting_team)
             bat_innings[bat_key] = inn
         inn.runs += d.runs_batter
         if d.is_batter_ball:
@@ -204,7 +204,7 @@ class Aggregator:
                 oinn = BattingInnings(
                     match_id=d.match_id, date=d.date, opposition=d.bowling_team,
                     venue=d.venue, country=d.country, position=order[other_key],
-                    innings_no=d.innings, chasing=d.chasing)
+                    innings_no=d.innings, chasing=d.chasing, team=d.batting_team)
                 bat_innings[other_key] = oinn
             oinn.out = True
             oinn.dismissal = d.wicket_kind
@@ -219,7 +219,7 @@ class Aggregator:
             if binn is None:
                 binn = BowlingInnings(
                     match_id=d.match_id, date=d.date, opposition=d.batting_team,
-                    venue=d.venue, country=d.country)
+                    venue=d.venue, country=d.country, team=d.bowling_team)
                 bowl_innings[bowl_key] = binn
             conceded = d.runs_batter + d.wides + d.noballs
             binn.runs += conceded

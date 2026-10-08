@@ -58,7 +58,9 @@ CITY_COUNTRY: dict[str, str] = {
     "St George's": "West Indies", "Providence": "West Indies",
     "North Sound": "West Indies", "Basseterre": "West Indies",
     "Kingstown": "West Indies", "Roseau": "West Indies", "Georgetown": "West Indies",
-    "Lauderhill": "West Indies", "Tarouba": "West Indies",
+    "Tarouba": "West Indies",
+    # Florida: West Indies have "hosted" series here, but it is in the USA.
+    "Lauderhill": "United States of America",
     # Sri Lanka
     "Colombo": "Sri Lanka", "Kandy": "Sri Lanka", "Galle": "Sri Lanka",
     "Dambulla": "Sri Lanka", "Pallekele": "Sri Lanka", "Hambantota": "Sri Lanka",
@@ -141,19 +143,41 @@ VENUE_COUNTRY: dict[str, str] = {
     "The Village": "Ireland",
 }
 
-# Which country each international team calls home, for the home/away split.
-TEAM_HOME: dict[str, str] = {
-    "India": "India", "Australia": "Australia", "England": "England",
-    "Pakistan": "Pakistan", "South Africa": "South Africa",
-    "New Zealand": "New Zealand", "Sri Lanka": "Sri Lanka",
-    "Bangladesh": "Bangladesh", "West Indies": "West Indies",
-    "Afghanistan": "Afghanistan", "Zimbabwe": "Zimbabwe", "Ireland": "Ireland",
-    "Scotland": "Scotland", "Netherlands": "Netherlands", "Nepal": "Nepal",
-    "Oman": "Oman", "United Arab Emirates": "United Arab Emirates",
-    "Namibia": "Namibia", "Kenya": "Kenya", "Canada": "Canada",
-    "United States of America": "United States of America",
-    "Papua New Guinea": "Papua New Guinea", "Hong Kong": "Hong Kong",
+# Which countries each international team calls home, for the home/away split.
+# A set, because a team's home can span countries: England play at home in
+# Wales (Sophia Gardens) as well as in England.
+TEAM_HOME: dict[str, frozenset[str]] = {
+    team: frozenset(homes) for team, homes in {
+        "India": {"India"}, "Australia": {"Australia"}, "England": {"England", "Wales"},
+        "Pakistan": {"Pakistan"}, "South Africa": {"South Africa"},
+        "New Zealand": {"New Zealand"}, "Sri Lanka": {"Sri Lanka"},
+        "Bangladesh": {"Bangladesh"}, "West Indies": {"West Indies"},
+        "Afghanistan": {"Afghanistan"}, "Zimbabwe": {"Zimbabwe"}, "Ireland": {"Ireland"},
+        "Scotland": {"Scotland"}, "Netherlands": {"Netherlands"}, "Nepal": {"Nepal"},
+        "Oman": {"Oman"}, "United Arab Emirates": {"United Arab Emirates"},
+        "Namibia": {"Namibia"}, "Kenya": {"Kenya"}, "Canada": {"Canada"},
+        "United States of America": {"United States of America"},
+        "Papua New Guinea": {"Papua New Guinea"}, "Hong Kong": {"Hong Kong"},
+    }.items()
 }
+
+
+def venue_type(team: str, opponent: str, country: str | None) -> str:
+    """'home', 'away', 'neutral' or 'unknown' for ``team`` (§1.10).
+
+    Never guessed: without the match country or the team's home it is
+    'unknown', and so is a match outside the team's home when the opponent's
+    home is unknown, because away and neutral can't then be told apart.
+    """
+    home = TEAM_HOME.get(team)
+    if not country or home is None:
+        return "unknown"
+    if country in home:
+        return "home"
+    opp_home = TEAM_HOME.get(opponent)
+    if opp_home is None:
+        return "unknown"
+    return "away" if country in opp_home else "neutral"
 
 
 def country_for(venue: str, city: str) -> str:

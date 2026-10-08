@@ -108,7 +108,7 @@ class Builder:
         teams_dir.mkdir(parents=True, exist_ok=True)
         for stale in teams_dir.glob("*.json"):
             stale.unlink()
-        index, files = self.teams.files()
+        index, files = self.teams.files(self.aggregators, players["slugs"], self.venues)
         write_json(teams_dir / "index.json", index, pretty=pretty)
         for tid, payload in files.items():
             write_json(teams_dir / f"{tid}.json", payload, pretty=pretty)

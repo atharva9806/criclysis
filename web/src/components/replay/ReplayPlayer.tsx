@@ -195,7 +195,7 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
       ) : (
         <>
           <div className="grid gap-5 lg:grid-cols-3">
-            <div className="space-y-5 lg:col-span-2">
+            <div className="min-w-0 space-y-5 lg:col-span-2">
               <Scoreboard replay={replay} timeline={tl} state={state} card={cards[state.innings]} />
               <Controls
                 playing={playing}
@@ -212,18 +212,18 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
               <BallTicker replay={replay} timeline={tl} cursor={cursor} />
               <WinProbability teams={teams} view={view} series={series} maxOvers={(model?.maxBalls ?? 300) / 6} />
             </div>
-            <div className="space-y-5">
+            <div className="min-w-0 space-y-5">
               <Projection state={state} model={model} eligibility={eligibility} par={par} />
               <Matchup finished={state.matchComplete} matchup={matchup} hasContext={!!context} datasetAsOf={asOf} matchDate={replay.date} formatLabel={formatLabel} />
             </div>
           </div>
 
           <div className="mt-5 grid gap-5 xl:grid-cols-5">
-            <div className="xl:col-span-3">
+            <div className="min-w-0 xl:col-span-3">
               <Scorecard replay={replay} cards={cards} />
             </div>
             {tl.maxBalls != null && (
-              <div className="xl:col-span-2">
+              <div className="min-w-0 xl:col-span-2">
                 <Worm timeline={tl} cursor={cursor} maxOvers={tl.maxBalls / 6} />
               </div>
             )}

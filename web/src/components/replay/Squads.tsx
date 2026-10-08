@@ -40,6 +40,7 @@ export default function Squads({
   hasContext: boolean;
   datasetAsOf: string | null;
 }) {
+  const rank = (team: string) => (battingOrder.includes(team) ? battingOrder.indexOf(team) : battingOrder.length);
   return (
     <section aria-labelledby="squads-title" className="card p-5 sm:p-6">
       <h2 id="squads-title" className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73]">
@@ -51,7 +52,7 @@ export default function Squads({
           : "Strengths and weaknesses appear when player records are available."}
       </p>
       <div className="mt-4 grid gap-6 md:grid-cols-2">
-        {squads.map((s) => (
+        {[...squads].sort((a, b) => rank(a.team) - rank(b.team)).map((s) => (
           <div key={s.team}>
             <h3 className="flex items-center gap-2 text-sm font-semibold">
               <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: TEAM_COLORS[Math.max(0, battingOrder.indexOf(s.team)) % 2] }} />

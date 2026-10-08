@@ -81,7 +81,7 @@ export default function Scoreboard({ replay, timeline, state, card }: { replay: 
             <div>
               <dt className="text-[11px] uppercase tracking-wider text-[#f5f5f7]/60">To win</dt>
               <dd className="mt-0.5 font-semibold tabular-nums">
-                {state.need ? `${state.need}${state.ballsLeft != null ? ` off ${state.ballsLeft}` : ""}` : "–"}
+                {state.need && !state.inningsComplete ? `${state.need}${state.ballsLeft != null ? ` off ${state.ballsLeft}` : ""}` : "–"}
               </dd>
             </div>
           </>

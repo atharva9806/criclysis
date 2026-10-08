@@ -32,6 +32,7 @@ import {
   stateAt,
   winCurve,
   winProbEligibility,
+  withMatchFacts,
   type WinPoint,
 } from "./engine";
 import { matchupFor, squads } from "./matchup";
@@ -279,6 +280,16 @@ describe("display rules (§4.4)", () => {
     expect(chartSeries(tl, curve, models.odi, 1e9).at(-1)!.p).toBe(0);
     const start = probabilityAt(tl, curve, models.odi, { ok: true }, 0);
     expect(start.kind === "model" && start.battingFirst).toBeCloseTo(models.odi.battingFirst(300, 0, 0), 15);
+  });
+
+  it("takes the official method and overs from the match record when the replay lacks them", () => {
+    const facts = { formatKey: "odi-m" as const, gender: "male" as const, venueKey: "Narendra Modi Stadium", scheduledOvers: 50, result: { method: null } };
+    const filled = withMatchFacts(FINAL_2023, facts);
+    expect(filled).toMatchObject({ formatKey: "odi-m", gender: "male", venueKey: "Narendra Modi Stadium", scheduledOvers: 50, method: null });
+    expect(winProbEligibility(withMatchFacts(FINAL_2023, { ...facts, scheduledOvers: 41 }), odiJson).ok).toBe(false);
+    expect(winProbEligibility(withMatchFacts(FINAL_2023, { ...facts, result: { method: "DLS" } }), odiJson).ok).toBe(false);
+    // A v2 replay's own fields win.
+    expect(withMatchFacts({ ...FINAL_2023, method: null, scheduledOvers: 50 }, { ...facts, scheduledOvers: 41, result: { method: "D/L" } })).toMatchObject({ method: null, scheduledOvers: 50 });
   });
 
   it("explains hidden probability", () => {

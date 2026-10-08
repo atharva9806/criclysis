@@ -77,14 +77,14 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
       </p>
 
       <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[34rem] text-sm">
+        <table className="w-full text-sm sm:min-w-[34rem]">
           <caption className="sr-only">
             {shown.team} batting, innings {shown.innings + 1}
           </caption>
           <thead>
             <tr className="border-b border-black/5">
               <th scope="col" className={th}>Batter</th>
-              <th scope="col" className={`${th} !text-left`}>How out</th>
+              <th scope="col" className={`${th} hidden !text-left sm:table-cell`}>How out</th>
               <th scope="col" className={th}>R</th>
               <th scope="col" className={th}>B</th>
               <th scope="col" className={th}>4s</th>
@@ -98,8 +98,9 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
                 <th scope="row" className={`${td} font-medium`}>
                   {name(b.person)}
                   {!b.dismissal && <span className="text-[#6e6e73]">*</span>}
+                  <span className="block text-xs font-normal text-[#6e6e73] sm:hidden">{b.dismissal ? b.dismissal.label : b.atCrease ? "batting" : "not out"}</span>
                 </th>
-                <td className={`${td} !text-left text-[#6e6e73]`}>{b.dismissal ? b.dismissal.label : b.atCrease ? "batting" : "not out"}</td>
+                <td className={`${td} hidden !text-left text-[#6e6e73] sm:table-cell`}>{b.dismissal ? b.dismissal.label : b.atCrease ? "batting" : "not out"}</td>
                 <td className={`${td} font-semibold`}>{b.runs}</td>
                 <td className={td}>{b.balls}</td>
                 <td className={td}>{b.fours}</td>
@@ -133,7 +134,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
       )}
 
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[30rem] text-sm">
+        <table className="w-full text-sm sm:min-w-[30rem]">
           <caption className="sr-only">
             {shown.bowlingTeam} bowling, innings {shown.innings + 1}
           </caption>
@@ -145,8 +146,8 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
               <th scope="col" className={th}>R</th>
               <th scope="col" className={th}>W</th>
               <th scope="col" className={th}>Econ</th>
-              <th scope="col" className={th}>Wd</th>
-              <th scope="col" className={th}>Nb</th>
+              <th scope="col" className={`${th} hidden sm:table-cell`}>Wd</th>
+              <th scope="col" className={`${th} hidden sm:table-cell`}>Nb</th>
             </tr>
           </thead>
           <tbody>
@@ -158,8 +159,8 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
                 <td className={td}>{b.runs}</td>
                 <td className={`${td} font-semibold`}>{b.wickets}</td>
                 <td className={td}>{b.legalBalls ? fixed((b.runs * 6) / b.legalBalls) : "–"}</td>
-                <td className={td}>{b.wides}</td>
-                <td className={td}>{b.noballs}</td>
+                <td className={`${td} hidden sm:table-cell`}>{b.wides}</td>
+                <td className={`${td} hidden sm:table-cell`}>{b.noballs}</td>
               </tr>
             ))}
           </tbody>

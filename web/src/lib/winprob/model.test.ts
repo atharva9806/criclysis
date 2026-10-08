@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { WinModelJson, WinProbFile } from "../contract/pipeline";
-import { pyRound, sigmoid, WinModel } from "./model";
+import { pyRound, sigmoid, slimModel, WinModel } from "./model";
 
 const read = <T,>(rel: string): T => JSON.parse(readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8")) as T;
 const file = read<WinProbFile>("../../../../fixtures/data-out-v1/winprob.json");
@@ -62,6 +62,15 @@ describe("WinModel", () => {
     expect(odi.venuePar(undefined, "Narendra Modi Stadium, Ahmedabad")).toMatchObject({ par: 262, matches: 8 });
     expect(odi.venuePar("Lord's", "Lord's, London")).toMatchObject({ key: "Lord's", par: 263, matches: 27 });
     expect(odi.venuePar(null, "Nowhere Ground, Atlantis")).toBeNull();
+  });
+
+  it("slims a model for the browser without changing any answer", () => {
+    const slim = slimModel(odiJson, { name: "Narendra Modi Stadium, Ahmedabad" });
+    expect(Object.keys(slim.venues)).toEqual(["Narendra Modi Stadium, Ahmedabad"]);
+    expect("golden" in slim || "validation" in slim).toBe(false);
+    const m = new WinModel(slim);
+    expect(m.venuePar(null, "Narendra Modi Stadium, Ahmedabad")?.par).toBe(262);
+    expect([m.chase(100, 3, 90), m.battingFirst(120, 2, 140), m.par()]).toEqual([odi.chase(100, 3, 90), odi.battingFirst(120, 2, 140), odi.par()]);
   });
 
   for (const [key, ref] of Object.entries(parity.models)) {

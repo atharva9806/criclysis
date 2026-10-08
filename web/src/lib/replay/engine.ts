@@ -256,6 +256,24 @@ export function outcomeOf(replay: Replay): Outcome {
   return { kind: "noResult", text: text || "No result" };
 }
 
+/**
+ * Fill a replay's v2 fields from the match record when the replay lacks them
+ * (v1 replays), so the display rules see the official method and overs.
+ */
+export function withMatchFacts(
+  replay: Replay,
+  m: { formatKey: FormatKey; gender: Replay["gender"]; venueKey: string; scheduledOvers: number | null; result: { method: string | null } },
+): Replay {
+  return {
+    ...replay,
+    formatKey: replay.formatKey ?? m.formatKey,
+    gender: replay.gender ?? m.gender,
+    venueKey: replay.venueKey ?? m.venueKey,
+    scheduledOvers: replay.scheduledOvers !== undefined ? replay.scheduledOvers : m.scheduledOvers,
+    method: replay.method !== undefined ? replay.method : m.result.method,
+  };
+}
+
 export type Eligibility = { ok: true } | { ok: false; reason: string };
 
 const RAIN_RULE = /\b(D\/L|DLS|VJD)\b/;

@@ -56,6 +56,7 @@ class Builder:
     """Feeds matches into every book; then writes the files."""
 
     def __init__(self, corpus, *, styles: dict | None = None, hands: dict | None = None) -> None:
+        """``styles`` and ``hands`` map person ids to bowling type and batting hand."""
         self.corpus = corpus
         self.styles = styles or {}
         self.hands = hands or {}
@@ -77,9 +78,7 @@ class Builder:
         gender = info.get("gender", "male")
         key = self.corpus.venues.key(info.get("venue", ""), info.get("city"))
         match, deliveries = parse_match(raw, match_id, fmt, venue_key=key)
-        agg = self.aggregator(fmt, gender)
-        agg.registry.update(match.registry)
-        agg.add_match(match, deliveries)
+        self.aggregator(fmt, gender).add_match(match, deliveries)
         row = build_match_row(raw, match_id, fmt, venue_key=key, country=match.country)
         self.matches.append(row)
         self.venues.add(row)
@@ -184,11 +183,10 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
                 f"{path} not found - run `python -m pipeline fetch --formats {fmt}` first")
     corpus = corpus or corpus_mod.scan(archives=archive_paths(FORMATS, archives))
 
-    # Names of everyone in the build, for the (name-keyed) style files.
-    names = {name for name in corpus.name_ids}
-    records, stats = resolve(names, extra_file=styles_file)
-    styles, hands = split_maps(records)
-    log.info("styles resolved for %d/%d names", len(styles), len(names))
+    # Metadata by person id, over the whole corpus (both genders).
+    metadata, stats = resolve(corpus, extra_file=styles_file)
+    styles, hands = split_maps(metadata)
+    log.info("styles: %s", stats)
 
     builder = Builder(corpus, styles=styles, hands=hands)
     for fmt in formats:
@@ -202,9 +200,6 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
             if count % 1000 == 0:
                 log.info("  %s: %d matches", fmt, count)
 
-    metadata = {name: {k: r.get(k, "") for k in ("bowlingType", "battingHand", "role", "country",
-                                                  "cricinfoId", "fullName")}
-                for name, r in records.items()}
     provenance = {
         "sources": [
             {"id": "cricsheet", "used": True,
@@ -217,7 +212,7 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
         "enrichment": stats,
         "dataset": "live",
         "identity": {"ambiguousNames": len(corpus.ambiguous_names()),
-                     "stylesSkippedAmbiguous": 0},
+                     "stylesSkippedAmbiguous": stats["skippedAmbiguous"]},
     }
     fp = fingerprint({p.name: p for p in paths.values()})
     generated = generated_at(list(paths.values()))

@@ -214,6 +214,20 @@ def index_entry(player: dict, per_format: dict[str, dict]) -> dict:
     }
 
 
+def _gender_of(player_id: str, by_key: dict[str, tuple]) -> str:
+    """A person has one gender. Should the data ever file one person id under
+    both, keep the gender with more of their balls rather than writing two
+    players with the same slug."""
+    balls: dict[str, int] = {}
+    for agg, record in by_key.values():
+        balls[agg.gender] = balls.get(agg.gender, 0) + \
+            record.bat_overall.balls + record.bowl_overall.balls
+    if len(balls) > 1:
+        log.warning("person %s appears as both %s; keeping the larger record",
+                    player_id, " and ".join(sorted(balls)))
+    return max(sorted(balls), key=lambda g: balls[g])
+
+
 def cohorts_by_key(aggregators: dict) -> dict[str, Cohort]:
     """One cohort per formatKey: women are only compared with women."""
     return {fk: Cohort(agg.fmt, agg.players) for fk, agg in aggregators.items()}
@@ -234,16 +248,19 @@ def export_players(aggregators: dict, metadata: dict, out_dir: Path,
     cohorts = cohorts_by_key(aggregators)
     order = {fmt: i for i, fmt in enumerate(FORMATS)}
 
-    # player key -> {fmt: (aggregator, record)}
-    records: dict[tuple[str, str], dict[str, tuple]] = {}
+    # person id -> {formatKey: (aggregator, record)}
+    records: dict[str, dict[str, tuple]] = {}
     for fk, agg in aggregators.items():
-        for key, record in agg.players.items():
-            records.setdefault((agg.gender, key), {})[agg.fmt] = (agg, record)
+        for pid, record in agg.players.items():
+            records.setdefault(pid, {})[fk] = (agg, record)
 
     index: list[dict] = []
     slugs: dict[str, str] = {}
     total_bytes = 0
-    for (gender, key), per_fmt in records.items():
+    for player_id, by_key in records.items():
+        gender = _gender_of(player_id, by_key)
+        per_fmt = {agg.fmt: (agg, record) for agg, record in by_key.values()
+                   if agg.gender == gender}
         per_fmt = dict(sorted(per_fmt.items(), key=lambda kv: order.get(kv[0], 99)))
         payloads: dict[str, dict] = {}
         for fmt, (agg, record) in per_fmt.items():
@@ -251,19 +268,18 @@ def export_players(aggregators: dict, metadata: dict, out_dir: Path,
                 continue
             analysis = analyse_player(record, cohorts[agg.format_key], fmt)
             payloads[fmt] = build_player_record(
-                record, analysis, agg,
-                lambda k, agg=agg: (agg.registry.get(k, k), k))
+                record, analysis, agg, lambda pid, agg=agg: (pid, agg.name_of(pid)))
         if not payloads:
             continue
 
-        any_record = next(iter(per_fmt.values()))[1]
-        player_id = any_record.player_id
-        name = any_record.name
+        # The name in the player's latest match, in any format.
+        name = max(agg.names.get(player_id, ("", record.name))
+                   for agg, record in per_fmt.values())[1]
         spans = [r.career_span() for _a, r in per_fmt.values()]
         starts = [s for s, _e in spans if s]
         ends = [e for _s, e in spans if e]
         teams = sorted({t for _a, r in per_fmt.values() for t in r.teams if t})
-        known = metadata.get(key, {})
+        known = metadata.get(player_id, {})
         meta = {
             "bowlingType": known.get("bowlingType", ""),
             "battingHand": known.get("battingHand", ""),

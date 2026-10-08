@@ -111,6 +111,7 @@ class PlayerFormat:
     bat_by_type_phase: defaultdict[str, BatSplit] = field(default_factory=_bat)
     dismissals: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
     dismissed_by_type: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # Head-to-heads are keyed by the opponent's person id.
     vs_bowler: defaultdict[str, BatSplit] = field(default_factory=_bat)
     bat_innings: list[BattingInnings] = field(default_factory=list)
 
@@ -160,8 +161,8 @@ class PlayerFormat:
             self.bat_by_position[str(position)].add(*args)
         # bat_by_entry is filled by add_entry_phase(), which needs the ball
         # index within the batter's own innings rather than the team's.
-        if d.bowler:
-            self.vs_bowler[d.bowler].add(*args)
+        if d.bowler_id:
+            self.vs_bowler[d.bowler_id].add(*args)
 
     def add_entry_phase(self, phase_key: str, runs: int, faced: bool,
                         out: bool, dot: bool) -> None:
@@ -207,8 +208,8 @@ class PlayerFormat:
         if year:
             self.bowl_by_year[year].add(*args)
         self.bowl_by_innings_no[str(d.innings)].add(*args)
-        if d.batter:
-            self.vs_batter[d.batter].add(*args)
+        if d.batter_id:
+            self.vs_batter[d.batter_id].add(*args)
         if wicket and d.wicket_kind:
             self.wicket_kinds[d.wicket_kind] += 1
 

@@ -36,7 +36,7 @@
       "deliveries": 20928,
       "players": 130,
       "venues": 31,
-      "bowlersMissingStyle": 0,
+      "bowlersMissingStyle": 1,
       "firstDate": "2019-07-14",
       "lastDate": "2025-12-06"
     },
@@ -229,14 +229,17 @@
       }
     ],
     "enrichment": {
-      "requested": 5296,
-      "resolved": 4532,
-      "unresolved": 1439
+      "players": 5335,
+      "resolvedById": 0,
+      "resolvedByName": 4489,
+      "withStyle": 3819,
+      "withHand": 4484,
+      "skippedAmbiguous": 83
     },
     "dataset": "live",
     "identity": {
       "ambiguousNames": 41,
-      "stylesSkippedAmbiguous": 0
+      "stylesSkippedAmbiguous": 83
     }
   }
 }

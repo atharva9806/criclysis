@@ -19,7 +19,7 @@ from .build import Builder
 from .config import FORMATS
 from .corpus import Corpus
 from .fingerprint import fingerprint
-from .simulate import TEAMS, MatchSimulator, make_roster
+from .simulate import TEAMS, MatchSimulator, make_roster, stable_id
 from .venues import CITY_COUNTRY, TEAM_HOME, VENUE_COUNTRY
 
 log = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ def build_seed(out_dir: Path, *, pretty: bool = False,
         by_team.setdefault(player.team, []).append(player)
 
     metadata = {
-        p.name: {
+        stable_id(p.name): {
             "bowlingType": p.bowling_type,
             "battingHand": p.batting_hand,
             "role": p.role,
@@ -105,8 +105,8 @@ def build_seed(out_dir: Path, *, pretty: bool = False,
 
     # Simulated grounds have unique names, so an empty corpus gives every
     # ground its plain name as its VenueKey.
-    builder = Builder(Corpus(), styles={p.name: p.bowling_type for p in roster},
-                      hands={p.name: p.batting_hand for p in roster})
+    builder = Builder(Corpus(), styles={stable_id(p.name): p.bowling_type for p in roster},
+                      hands={stable_id(p.name): p.batting_hand for p in roster})
     for fmt in FORMATS:
         # Same reason as stable_id(): a salted hash would reseed differently
         # on every run and the dataset would not be reproducible.

@@ -14,6 +14,12 @@ precedence:
 Nothing is fetched. Whatever is still unresolved simply stays blank: those
 deliveries drop out of the bowling-type splits and are reported in the build
 summary, rather than being guessed at.
+
+Players are identified by Cricsheet person id. A row with a ``cricsheet_id``
+applies to that person. A row without one applies by name, and only when the
+name belongs to exactly one person in the corpus: two different players called
+"Rashid Khan" must not both inherit one Rashid Khan's leg spin. Rows for such
+ambiguous names are skipped and counted.
 """
 from __future__ import annotations
 
@@ -33,7 +39,11 @@ GENERATED = ROOT / "data" / "player_styles.csv"
 
 
 def load_csv(path: Path) -> dict[str, dict]:
-    """Read a styles CSV keyed on the Cricsheet player name."""
+    """Read a styles CSV, keyed on the Cricsheet player name.
+
+    A row with a ``cricsheet_id`` is keyed on that id instead, so two rows for
+    two different people of the same name both survive.
+    """
     if not path.exists():
         return {}
     out: dict[str, dict] = {}
@@ -45,7 +55,7 @@ def load_csv(path: Path) -> dict[str, dict]:
             name = (row.get("name") or "").strip()
             if not name:
                 continue
-            out[name] = {
+            out[(row.get("cricsheet_id") or "").strip() or name] = {
                 "bowlingType": normalise_bowling_style(row.get("bowling_type", ""))
                                or (row.get("bowling_type") or "").strip(),
                 "battingHand": normalise_batting_style(row.get("batting_hand", ""))
@@ -60,21 +70,52 @@ def load_csv(path: Path) -> dict[str, dict]:
     return out
 
 
-def resolve(names: set[str], *, extra_file: Path | None = None) -> tuple[dict[str, dict], dict]:
-    """Build a name -> attributes map covering as many of ``names`` as possible."""
-    records: dict[str, dict] = {}
-    records.update(load_csv(GENERATED))
-    if extra_file:
-        records.update(load_csv(extra_file))
-    # The curated file wins over everything, so a hand-checked correction is
-    # never silently undone.
-    records.update(load_csv(CURATED))
+#: Metadata fields copied from a styles row onto a player.
+FIELDS = ("bowlingType", "battingHand", "role", "country", "cricinfoId", "fullName")
 
-    resolved = {n: records[n] for n in names if n in records}
+
+def resolve(corpus, *, extra_file: Path | None = None) -> tuple[dict[str, dict], dict]:
+    """person id -> metadata for every player in ``corpus`` that has any.
+
+    Layers are applied in rising precedence (generated, ``extra_file``,
+    curated); within a layer a row keyed by id beats a row keyed by name. The
+    winning row supplies all of a player's metadata.
+    """
+    layers = [load_csv(GENERATED)]
+    if extra_file:
+        layers.append(load_csv(extra_file))
+    layers.append(load_csv(CURATED))
+    # (rows pinned to a person id, rows keyed by name only) per layer
+    indexed = [({r["cricsheetId"]: r for r in layer.values() if r["cricsheetId"]},
+                {n: r for n, r in layer.items() if not r["cricsheetId"]})
+               for layer in layers]
+
+    resolved: dict[str, dict] = {}
+    via_id: set[str] = set()
+    skipped: set[str] = set()
+    for pid, names in corpus.id_names.items():
+        for pinned, named in indexed:
+            record = pinned.get(pid)
+            if record is not None:
+                via_id.add(pid)
+            else:
+                for name in sorted(n for n in names if n in named):
+                    if len(corpus.name_ids.get(name, ())) > 1:
+                        skipped.add(pid)
+                        continue
+                    record = named[name]
+                    via_id.discard(pid)
+                    break
+            if record is not None:
+                resolved[pid] = {k: record.get(k, "") for k in FIELDS}
+
     stats = {
-        "requested": len(names),
-        "resolved": len(resolved),
-        "unresolved": sum(1 for n in names if not resolved.get(n, {}).get("bowlingType")),
+        "players": len(corpus.id_names),
+        "resolvedById": len(via_id),
+        "resolvedByName": len(resolved) - len(via_id),
+        "withStyle": sum(1 for r in resolved.values() if r.get("bowlingType")),
+        "withHand": sum(1 for r in resolved.values() if r.get("battingHand")),
+        "skippedAmbiguous": len(skipped - set(resolved)),
     }
     return resolved, stats
 

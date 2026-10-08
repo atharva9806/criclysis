@@ -36,7 +36,7 @@ IN_CRICINFO = "cricinfo_id"
 IN_FULL = "full_name"
 IN_DOB = "dob"
 
-OUT_FIELDS = ["name", "full_name", "bowling_type", "batting_hand", "role",
+OUT_FIELDS = ["name", "cricsheet_id", "full_name", "bowling_type", "batting_hand", "role",
               "country", "cricinfo_id", "source"]
 
 
@@ -83,6 +83,9 @@ def convert(source: Path, dest: Path) -> dict:
             continue
         out.append({
             "name": name,
+            # The person id is what the build joins on; the name is only used
+            # when it is missing (see pipeline/enrich.py).
+            "cricsheet_id": _clean(row.get(IN_ID)),
             # Cricsheet names players "V Kohli"; people search "Virat Kohli".
             # Carrying the full name is what makes that search work.
             "full_name": _clean(row.get(IN_FULL)),
@@ -96,7 +99,7 @@ def convert(source: Path, dest: Path) -> dict:
         stats["withStyle"] += 1 if bowling else 0
         stats["withHand"] += 1 if hand else 0
 
-    out.sort(key=lambda r: r["name"])
+    out.sort(key=lambda r: (r["name"], r["cricsheet_id"]))
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("w", newline="", encoding="utf-8") as fh:
         fh.write(

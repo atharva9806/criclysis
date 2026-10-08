@@ -84,6 +84,11 @@ class Delivery:
     batter: str
     non_striker: str
     bowler: str
+    # Cricsheet person ids (info.registry). Names are only labels: two
+    # different players can share one, so everything is keyed by these.
+    batter_id: str
+    non_striker_id: str
+    bowler_id: str
     runs_batter: int
     runs_extras: int
     runs_total: int
@@ -95,6 +100,7 @@ class Delivery:
     is_batter_ball: bool      # counts as a ball faced by the batter
     wicket_kind: str | None
     player_out: str | None
+    player_out_id: str | None
     bowler_credited: bool     # dismissal attributed to the bowler
     phase: str
     chasing: bool
@@ -242,6 +248,14 @@ def parse_match(raw: dict, match_id: str, fmt: str,
         registry=((info.get("registry") or {}).get("people") or {}),
     )
 
+    def person_id(name: str) -> str:
+        """The player's Cricsheet id. Every name in a Cricsheet file is in its
+        registry; should one ever be missing, the name stands in, marked with
+        a '~' so it can never collide with a real id."""
+        if not name:
+            return ""
+        return match.registry.get(name) or f"~{name}"
+
     deliveries: list[Delivery] = []
     for idx, inn in enumerate(raw.get("innings", [])):
         if inn.get("super_over"):
@@ -298,6 +312,9 @@ def parse_match(raw: dict, match_id: str, fmt: str,
                     batter=d.get("batter", ""),
                     non_striker=d.get("non_striker", ""),
                     bowler=d.get("bowler", ""),
+                    batter_id=person_id(d.get("batter", "")),
+                    non_striker_id=person_id(d.get("non_striker", "")),
+                    bowler_id=person_id(d.get("bowler", "")),
                     runs_batter=int(runs.get("batter", 0)),
                     runs_extras=int(runs.get("extras", 0)),
                     runs_total=int(runs.get("total", 0)),
@@ -309,6 +326,7 @@ def parse_match(raw: dict, match_id: str, fmt: str,
                     is_batter_ball=is_batter_ball,
                     wicket_kind=wicket_kind,
                     player_out=player_out,
+                    player_out_id=person_id(player_out) if player_out else None,
                     bowler_credited=credited,
                     phase=phase_for(fmt, over),
                     chasing=chasing,

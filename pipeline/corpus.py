@@ -34,6 +34,8 @@ class Corpus:
     name_ids: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
     #: person id -> (date, name) of their most recent match
     id_name: dict[str, tuple[str, str]] = field(default_factory=dict)
+    #: person id -> every name it is used with (usually one)
+    id_names: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
     #: person id -> genders they appear under (one, unless the data is wrong)
     id_genders: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
 
@@ -61,6 +63,7 @@ class Corpus:
             if not pid:
                 continue
             self.name_ids[name].add(pid)
+            self.id_names[pid].add(name)
             self.id_genders[pid].add(gender)
             if pid not in self.id_name or date >= self.id_name[pid][0]:
                 self.id_name[pid] = (date, name)

@@ -29,8 +29,8 @@ def build_corpus(fmt="t20i", matches=60):
     by_team = {}
     for p in roster:
         by_team.setdefault(p.team, []).append(p)
-    styles = {p.name: p.bowling_type for p in roster}
-    hands = {p.name: p.batting_hand for p in roster}
+    styles = {stable_id(p.name): p.bowling_type for p in roster}
+    hands = {stable_id(p.name): p.batting_hand for p in roster}
     sim_rng = random.Random(SEED)
     sim = MatchSimulator(fmt, sim_rng)
     agg = Aggregator(fmt, styles=styles, hands=hands)
@@ -41,7 +41,6 @@ def build_corpus(fmt="t20i", matches=60):
                         _pick_xi(sim_rng, by_team[away], year),
                         day, venue, city, f"{fmt}-{i}")
         match, deliveries = parse_match(raw, f"{fmt}-{i}", fmt)
-        agg.registry.update(match.registry)
         agg.add_match(match, deliveries)
     agg.finalise()
     return agg, roster
@@ -305,12 +304,16 @@ class TestCuratedStyles(unittest.TestCase):
         d = Path(tempfile.mkdtemp())
         generated = d / "generated.csv"
         generated.write_text(f"name,bowling_type,source\n{name},{other},player-meta\n")
+        from pipeline.corpus import Corpus
+        corpus = Corpus()
+        corpus.name_ids[name].add("0000beef")
+        corpus.id_names["0000beef"].add(name)
         original = enrich.GENERATED
         try:
             enrich.GENERATED = generated
-            resolved, _stats = enrich.resolve({name})
+            resolved, _stats = enrich.resolve(corpus)
         finally:
             enrich.GENERATED = original
             shutil.rmtree(d, ignore_errors=True)
-        self.assertEqual(resolved[name]["bowlingType"],
+        self.assertEqual(resolved["0000beef"]["bowlingType"],
                          self.records[name]["bowlingType"])

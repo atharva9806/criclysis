@@ -6,9 +6,11 @@
  * a contract change.
  */
 import type {
+  Cohorts,
   Fmt,
   FormatKey,
   Gender,
+  Manifest,
   MatchInnings,
   MatchResult,
   PersonId,
@@ -29,6 +31,10 @@ export type MatchRow = {
   eventName: string | null;
   eventStage: string | null;
   eventMatchNumber: number | null;
+  /** Added by B: event.group, info.match_type_number and info.missing (§1.6). */
+  eventGroup: string | null;
+  matchTypeNumber: number | null;
+  missing: string[];
   venue: string;
   venueKey: VenueKey;
   city: string | null;
@@ -93,8 +99,31 @@ export type DatasetMeta = {
   generatedAt: string;
   importedAt: string | null;
   schemaVersion: number;
-  formats: Record<string, { matches: number; players: number; firstDate: string; lastDate: string; label: string }>;
+  formats: Record<
+    string,
+    {
+      matches: number;
+      players: number;
+      firstDate: string;
+      lastDate: string;
+      label: string;
+      /** Added by B. */
+      formatKey: FormatKey;
+      format: Fmt;
+      gender: Gender;
+      deliveries: number;
+    }
+  >;
   thresholds: Thresholds;
+  /** Added by B: the latest match date in the dataset ("data as of"). */
+  dataAsOf: string;
+  /** Added by B: Cricsheet source fingerprint of the build, when the pipeline wrote one. */
+  fingerprint: string | null;
+  phases: Manifest["phases"];
+  bowlingTypes: Manifest["bowlingTypes"];
+  sources: Manifest["sources"];
+  provenance: Manifest["provenance"];
+  cohorts: Cohorts | null;
 };
 
 export type ReplayContext = {

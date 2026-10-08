@@ -1,15 +1,11 @@
-import { getAllPlayers } from "@/lib/analytics";
-import PlayersTable from "./PlayersTable";
-import { SectionTitle } from "@/components/ui";
+import { SectionTitle, EmptyState } from "@/components/ui";
 
-export const dynamic = "force-dynamic";
-
-export default async function PlayersPage() {
-  const players = await getAllPlayers();
+// Temporary while this page is rebuilt on the Cricsheet-backed database.
+export default function Page() {
   return (
-    <div className="mx-auto max-w-6xl px-6 py-16">
-      <SectionTitle eyebrow="Players" title="The complete database." sub="Search, filter and sort across formats. Click any player for a full career breakdown, strengths & weaknesses and a strategy plan." />
-      <PlayersTable players={players} />
+    <div className="mx-auto max-w-6xl px-4 py-16 md:px-6">
+      <SectionTitle eyebrow="Players" title="Being rebuilt on real data." />
+      <EmptyState title="This page is being rebuilt on Cricsheet ball-by-ball data." />
     </div>
   );
 }

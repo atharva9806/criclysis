@@ -1,18 +1,11 @@
-import { Suspense } from "react";
-import { getAllPlayers } from "@/lib/analytics";
-import { SectionTitle } from "@/components/ui";
-import CompareClient from "./CompareClient";
+import { SectionTitle, EmptyState } from "@/components/ui";
 
-export const dynamic = "force-dynamic";
-
-export default async function ComparePage() {
-  const players = await getAllPlayers();
+// Temporary while this page is rebuilt on the Cricsheet-backed database.
+export default function Page() {
   return (
-    <div className="mx-auto max-w-6xl px-6 py-16">
-      <SectionTitle eyebrow="Compare" title="Head to head." sub="Overlay two players across eight attributes and every format." />
-      <Suspense fallback={<div className="card p-10 text-center text-sm text-[#6e6e73]">Loading…</div>}>
-        <CompareClient players={players} />
-      </Suspense>
+    <div className="mx-auto max-w-6xl px-4 py-16 md:px-6">
+      <SectionTitle eyebrow="Compare" title="Being rebuilt on real data." />
+      <EmptyState title="This page is being rebuilt on Cricsheet ball-by-ball data." />
     </div>
   );
 }

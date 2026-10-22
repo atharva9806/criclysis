@@ -5,16 +5,20 @@ import type { KeyboardEvent, ReactNode } from "react";
 export const SPEEDS = [1, 5, 20] as const;
 export type Speed = (typeof SPEEDS)[number];
 
+/**
+ * A step button. At either end of the match it is aria-disabled rather than
+ * disabled, so a keyboard user who stepped there keeps focus on it.
+ */
 function IconButton({ label, onClick, disabled, children, keys }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode; keys?: string }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
+      aria-disabled={disabled || undefined}
       aria-label={label}
       aria-keyshortcuts={keys}
       title={keys ? `${label} (${keys.replace(/\+/g, " + ")})` : label}
-      className="grid h-10 w-10 place-items-center rounded-full text-[#1d1d1f] transition-colors hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071e3] disabled:opacity-30 disabled:hover:bg-transparent"
+      className="grid h-10 w-10 place-items-center rounded-full text-[#1d1d1f] transition-colors hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071e3] aria-disabled:cursor-default aria-disabled:opacity-30 aria-disabled:hover:bg-transparent"
     >
       {children}
     </button>

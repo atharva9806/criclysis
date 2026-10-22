@@ -1,7 +1,7 @@
 "use client";
 
 import { Area, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
-import type { ChartPoint, ProbabilityView } from "@/lib/replay/engine";
+import { resultNote, type ChartPoint, type ProbabilityView } from "@/lib/replay/engine";
 import { pct, TEAM_COLORS } from "./format";
 
 type Row = ChartPoint & { ahead1: number; ahead2: number };
@@ -50,12 +50,15 @@ export default function WinProbability({
   view,
   series,
   maxOvers,
+  hiddenReason,
 }: {
   /** [side batting first, side batting second] */
   teams: [string, string];
   view: ProbabilityView;
   series: ChartPoint[];
   maxOvers: number;
+  /** Why the model does not apply to this match, if it does not. */
+  hiddenReason?: string | null;
 }) {
   const rows: Row[] = series.map((s) => ({ ...s, ahead1: Math.max(s.p, 0.5), ahead2: Math.min(s.p, 0.5) }));
   const step = maxOvers >= 50 ? 10 : 5;
@@ -77,7 +80,7 @@ export default function WinProbability({
           <p className="text-sm">
             <span className="text-lg font-semibold">{view.outcome.text}</span>
             <span className="mt-1 block text-[#6e6e73]">
-              {view.outcome.kind === "win" ? "The official result." : "The official result. The model's last probability is not shown, because it cannot describe a tie."}
+              {resultNote(view.outcome.kind, hiddenReason)}
             </span>
           </p>
         )}

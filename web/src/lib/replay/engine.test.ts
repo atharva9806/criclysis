@@ -25,9 +25,11 @@ import {
   inningsTotals,
   outcomeOf,
   overBoundary,
+  oversToBalls,
   phaseFor,
   probabilityAt,
   replayStates,
+  resultNote,
   scorecardAt,
   stateAt,
   winCurve,
@@ -232,6 +234,33 @@ describe("match state", () => {
   });
 });
 
+describe("overs written as overs.balls", () => {
+  it("reads .1 to .5 as balls, not tenths of an over", () => {
+    expect([48.1, 48.2, 48.3, 48.4, 48.5, 46.2, 50, 20, 0.3].map(oversToBalls)).toEqual([289, 290, 291, 292, 293, 278, 300, 120, 3]);
+  });
+
+  it("gives 474480's 48.5-over chase 293 balls, so balls left and the rate stay right to the end", () => {
+    const r = readJson<Replay>("./__fixtures__/474480.json");
+    expect(r.innings[1].targetOvers).toBe(48.5);
+    const tl = buildTimeline(r);
+    expect(tl.innings[1].ballLimit).toBe(293);
+    // Official totals (matches.json): India 280/5 (300 balls), England 270/8 (293 balls).
+    expect(inningsTotals(tl).map((t) => [t.team, t.runs, t.wickets, t.legalBalls])).toEqual([["India", 280, 5, 300], ["England", 270, 8, 293]]);
+    // Two legal balls from the end there are two balls left, and a finite required rate.
+    const cursor = tl.deliveries.findIndex((d) => d.innings === 1 && d.legalBalls === 291) + 1;
+    const s = stateAt(tl, cursor);
+    expect(s.ballsLeft).toBe(2);
+    expect(s.requiredRate).toBeCloseTo(((s.need ?? 0) * 6) / 2, 10);
+    // The innings break counts the chase's real balls.
+    const brk = stateAt(tl, tl.innings[0].end);
+    expect(brk.inningsComplete).toBe(true);
+    expect(tl.innings[1].ballLimit).toBe(oversToBalls(48.5));
+    // The end: scores level, every ball used, and the official result.
+    expect(stateAt(tl, tl.deliveries.length)).toMatchObject({ runs: 270, need: 1, ballsLeft: 0, matchComplete: true });
+    expect(outcomeOf(r)).toEqual({ kind: "tie", text: "Match tied (D/L method)" });
+  });
+});
+
 describe("display rules (§4.4)", () => {
   const odiJson = winprob.formats.odi as WinModelJson;
 
@@ -255,6 +284,33 @@ describe("display rules (§4.4)", () => {
     expect(why(FINAL_2023, null)).toMatch(/No win-probability model/);
     expect(why(FINAL_2024)).toMatch(/No win-probability model is available for t20i-m/);
     expect(why({ ...FINAL_2023, winner: null, result: "No result" })).toMatch(/no result/);
+  });
+
+  it("explains each reason for hiding the model in its own words", () => {
+    const why = (r: Replay, m: WinModelJson | null) => {
+      const e = winProbEligibility(r, m);
+      return e.ok ? "ok" : e.reason;
+    };
+    const t20 = winprob.formats.t20i as WinModelJson;
+    const awarded = { ...FINAL_2024, method: "Awarded", result: "India won (awarded)" };
+    expect(why(awarded, t20)).toMatch(/awarded rather than played to a finish/);
+    expect(why(awarded, t20)).not.toMatch(/rain/);
+    expect(why({ ...FINAL_2024, result: "India won (awarded)" }, t20)).toMatch(/awarded/);
+    expect(why({ ...FINAL_2024, method: "Lost fewer wickets" }, t20)).toMatch(/decided by a rule \(Lost fewer wickets\)/);
+    expect(why({ ...FINAL_2023, method: "DLS" }, odiJson)).toMatch(/DLS method after rain/);
+  });
+
+  it("words the line under the result by outcome and by why the model was hidden", () => {
+    expect(resultNote("win")).toBe("The official result.");
+    expect(resultNote("draw")).toBe("The official result.");
+    expect(resultNote("noResult")).toBe("The official result.");
+    expect(resultNote("tie")).toMatch(/cannot describe a tie/);
+    // A rain-ruled tie never had a model probability, so the reason replaces the tie sentence.
+    const rain = winProbEligibility(readJson<Replay>("./__fixtures__/474480.json"), odiJson);
+    expect(rain.ok).toBe(false);
+    const note = resultNote("tie", rain.ok ? null : rain.reason);
+    expect(note).toMatch(/D\/L method after rain/);
+    expect(note).not.toMatch(/cannot describe a tie/);
   });
 
   it("shows the official result at the end of a tie, never the model's last probability", () => {

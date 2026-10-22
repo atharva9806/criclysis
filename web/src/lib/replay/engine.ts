@@ -68,6 +68,15 @@ const isBatterBall = (b: Ball) => b[6] !== "wides";
 const conceded = (b: Ball) => b[4] + (b[6] === "wides" || b[6] === "noballs" ? b[5] : 0);
 const bowlerCredited = (kind: string | null) => !!kind && !NON_BOWLER_DISMISSALS.has(kind);
 
+/**
+ * Legal balls in a Cricsheet overs figure. Cricsheet writes overs as
+ * overs.balls, so 48.5 is 48 overs and 5 balls (293), not 48.5 × 6.
+ */
+export function oversToBalls(overs: number): number {
+  const whole = Math.trunc(overs);
+  return whole * 6 + Math.round((overs - whole) * 10);
+}
+
 /** "43.4" from legal balls. */
 export function oversString(legalBalls: number): string {
   const rest = legalBalls % 6;
@@ -202,7 +211,7 @@ export function buildTimeline(replay: Replay): Timeline {
       team: inn.team,
       bowlingTeam: replay.teams.find((t) => t !== inn.team) ?? "",
       target: inn.target ?? null,
-      ballLimit: maxBalls && overs ? Math.round(overs * 6) : null,
+      ballLimit: maxBalls && overs ? oversToBalls(overs) : null,
       penaltyPre: inn.penaltyRuns?.pre ?? 0,
       penaltyPost: inn.penaltyRuns?.post ?? 0,
       start,
@@ -277,6 +286,16 @@ export function withMatchFacts(
 export type Eligibility = { ok: true } | { ok: false; reason: string };
 
 const RAIN_RULE = /\b(D\/L|DLS|VJD)\b/;
+const HIDDEN = "Win probability, projected score and par are hidden.";
+
+/** Why a result method puts a match outside the model, in plain words. */
+function methodReason(method: string): string {
+  if (RAIN_RULE.test(method)) {
+    return `This match was decided by the ${method} method after rain, so its target does not mean what the model assumes. ${HIDDEN}`;
+  }
+  if (/^awarded$/i.test(method)) return `This match was awarded rather than played to a finish. ${HIDDEN}`;
+  return `This match was decided by a rule (${method}) rather than played to a finish. ${HIDDEN}`;
+}
 
 /**
  * Win probability, projected score and par are shown only for ODIs and T20Is
@@ -288,19 +307,19 @@ export function winProbEligibility(replay: Replay, model: WinModelCore | WinMode
     return { ok: false, reason: "Win probability is modelled only for ODIs and T20Is. Tests can be drawn, so a two-outcome model does not fit them." };
   }
   const fullOvers = (BALLS_PER_INNINGS[replay.format] ?? 0) / 6;
-  const method = replay.method ?? (RAIN_RULE.exec(replay.result ?? "")?.[1] || null);
+  const method = replay.method ?? (RAIN_RULE.exec(replay.result ?? "")?.[1] || (/\(awarded\)/i.test(replay.result ?? "") ? "Awarded" : null));
   if (method) {
-    return { ok: false, reason: `This match was decided by the ${method} method after rain, so its target does not mean what the model assumes. Win probability, projected score and par are hidden.` };
+    return { ok: false, reason: methodReason(method) };
   }
   if (replay.scheduledOvers != null && replay.scheduledOvers !== fullOvers) {
-    return { ok: false, reason: `This match was shortened to ${replay.scheduledOvers} overs a side. The model covers only full ${fullOvers}-over matches, so win probability, projected score and par are hidden.` };
+    return { ok: false, reason: `This match was shortened to ${replay.scheduledOvers} overs a side. The model covers only full ${fullOvers}-over matches. ${HIDDEN}` };
   }
   const chase = replay.innings[1];
   if (chase?.targetOvers != null && chase.targetOvers !== fullOvers) {
-    return { ok: false, reason: `The chase was reduced to ${chase.targetOvers} overs. The model covers only full ${fullOvers}-over matches, so win probability, projected score and par are hidden.` };
+    return { ok: false, reason: `The chase was reduced to ${chase.targetOvers} overs. The model covers only full ${fullOvers}-over matches. ${HIDDEN}` };
   }
   if (outcomeOf(replay).kind === "noResult") {
-    return { ok: false, reason: "This match had no result, so win probability is not shown." };
+    return { ok: false, reason: `This match had no result, and the model only describes matches that reach one. ${HIDDEN}` };
   }
   const fk = replay.formatKey ?? `${replay.format}-${replay.gender === "female" ? "w" : "m"}`;
   const modelKey = model ? (model.formatKey ?? `${model.format}-m`) : null;
@@ -641,6 +660,13 @@ export function ballLabel(b: Ball): { text: string; tone: BallTone; description:
 // ---------------------------------------------------------------------------
 // Win probability for display
 // ---------------------------------------------------------------------------
+
+/** The line under the official result: why the model is silent, when it is. */
+export function resultNote(kind: Outcome["kind"], hiddenReason?: string | null): string {
+  if (hiddenReason) return `The official result. ${hiddenReason}`;
+  if (kind === "tie") return "The official result. A two-outcome model cannot describe a tie, so its last probability is not shown.";
+  return "The official result.";
+}
 
 export type ProbabilityView =
   | { kind: "hidden"; reason: string }

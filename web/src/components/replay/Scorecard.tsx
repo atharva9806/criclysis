@@ -167,6 +167,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
         </table>
       </div>
       <p className="mt-3 text-[11px] text-[#6e6e73]">Replays carry no fielders, so catches name only the bowler.</p>
+      <p className="text-[11px] text-[#6e6e73]">Byes and leg byes run off a no-ball are shown as no-ball runs, in the extras and in the bowler&apos;s figures.</p>
     </section>
   );
 }

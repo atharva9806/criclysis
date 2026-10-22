@@ -125,13 +125,17 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
   }, [tl]);
 
   // Keyboard: Space or K plays and pauses, arrows step a ball, Shift + arrows an over.
-  // Form fields keep their own keys (the scrubber's arrows already step a ball).
+  // Text fields keep every key. On the scrubber (a range input) the plain
+  // arrows, Home and End stay native (they already move a ball, or to either
+  // end); Space, K and Shift + arrows still drive the player.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
-      if (t?.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const scrubber = tag === "INPUT" && (t as HTMLInputElement).type === "range";
+      if (t?.isContentEditable || (tag === "INPUT" && !scrubber) || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (scrubber && (e.key === "ArrowRight" || e.key === "ArrowLeft") && !e.shiftKey) return;
       const activates = tag === "BUTTON" || tag === "A" || tag === "SUMMARY";
       if ((e.key === " " && !activates) || e.key === "k" || e.key === "K") {
         e.preventDefault();
@@ -210,7 +214,7 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
                 onSpeed={setSpeed}
               />
               <BallTicker replay={replay} timeline={tl} cursor={cursor} />
-              <WinProbability teams={teams} view={view} series={series} maxOvers={(model?.maxBalls ?? 300) / 6} />
+              <WinProbability teams={teams} view={view} series={series} maxOvers={(model?.maxBalls ?? 300) / 6} hiddenReason={eligibility.ok ? null : eligibility.reason} />
             </div>
             <div className="min-w-0 space-y-5">
               <Projection state={state} model={model} eligibility={eligibility} par={par} />

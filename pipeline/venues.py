@@ -29,7 +29,7 @@ CITY_COUNTRY: dict[str, str] = {
     # England
     "London": "England", "Manchester": "England", "Birmingham": "England",
     "Leeds": "England", "Nottingham": "England", "Southampton": "England",
-    "Cardiff": "England", "Bristol": "England", "Chester-le-Street": "England",
+    "Cardiff": "Wales", "Bristol": "England", "Chester-le-Street": "England",
     "Durham": "England", "Taunton": "England", "Hove": "England",
     "Chelmsford": "England", "Northampton": "England", "Leicester": "England",
     "Derby": "England", "Worcester": "England", "Canterbury": "England",
@@ -124,13 +124,18 @@ VENUE_COUNTRY: dict[str, str] = {
     "Dubai International Cricket Stadium": "United Arab Emirates",
     "Sheikh Zayed Stadium": "United Arab Emirates",
     "Gaddafi Stadium": "Pakistan",
-    "National Stadium": "Pakistan",
     "Rawalpindi Cricket Stadium": "Pakistan",
     "Galle International Stadium": "Sri Lanka",
     "R Premadasa Stadium": "Sri Lanka",
     "Sinhalese Sports Club Ground": "Sri Lanka",
     "Pallekele International Cricket Stadium": "Sri Lanka",
     "Shere Bangla National Stadium": "Bangladesh",
+    "Sher-e-Bangla National Cricket Stadium": "Bangladesh",
+    "Bangabandhu National Stadium": "Bangladesh",
+    # Bermuda's grounds: Cricsheet gives their city as Hamilton, which
+    # would otherwise read as Hamilton, New Zealand.
+    "Bermuda National Stadium": "Bermuda",
+    "White Hill Field": "Bermuda",
     "Zahur Ahmed Chowdhury Stadium": "Bangladesh",
     "Kensington Oval": "West Indies",
     "Sabina Park": "West Indies",
@@ -142,6 +147,17 @@ VENUE_COUNTRY: dict[str, str] = {
     "Civil Service Cricket Club": "Ireland",
     "The Village": "Ireland",
 }
+
+# (ground, city) -> country where neither the ground's name nor the city's
+# says which country: "National Stadium" is in Karachi and in Hamilton, and
+# Hamilton is in Bermuda and in New Zealand.
+GROUND_CITY_COUNTRY: dict[tuple[str, str], str] = {
+    ("National Stadium", "Karachi"): "Pakistan",
+    ("National Stadium", "Hamilton"): "Bermuda",
+    ("Bermuda National Stadium", "Hamilton"): "Bermuda",
+    ("White Hill Field", "Hamilton"): "Bermuda",
+}
+
 
 # Which countries each international team calls home, for the home/away split.
 # A set, because a team's home can span countries: England play at home in
@@ -158,6 +174,7 @@ TEAM_HOME: dict[str, frozenset[str]] = {
         "Namibia": {"Namibia"}, "Kenya": {"Kenya"}, "Canada": {"Canada"},
         "United States of America": {"United States of America"},
         "Papua New Guinea": {"Papua New Guinea"}, "Hong Kong": {"Hong Kong"},
+        "Bermuda": {"Bermuda"},
     }.items()
 }
 
@@ -180,15 +197,7 @@ def venue_type(team: str, opponent: str, country: str | None) -> str:
     return "away" if country in opp_home else "neutral"
 
 
-def country_for(venue: str, city: str) -> str:
-    if venue in VENUE_COUNTRY:
-        return VENUE_COUNTRY[venue]
-    if city in CITY_COUNTRY:
-        return CITY_COUNTRY[city]
-    for name, country in VENUE_COUNTRY.items():
-        if name in venue:
-            return country
-    return ""
+
 
 
 # ---------------------------------------------------------------------------
@@ -353,3 +362,22 @@ class VenueBook:
                            "city": self.index.city(key), "country": self.country(key),
                            "formats": formats}
         return {"venues": venues}
+
+
+def country_for(venue: str, city: str | None) -> str:
+    """The country a match was played in ('' when unknown).
+
+    The one place a match's country comes from. ``venue`` is the venue as
+    Cricsheet gives it or a VenueKey; ``city`` is Cricsheet's city. Looked up
+    by exact ground name and city, then ground name, then city - never by
+    substring, which put Shere Bangla National Stadium in Pakistan because
+    "National Stadium" (Karachi) is part of its name.
+    """
+    ground, _, key_city = canonical_venue(venue).partition("|")
+    city = city or key_city
+    normal = normalise_city(ground, city)
+    if (ground, normal) in GROUND_CITY_COUNTRY:
+        return GROUND_CITY_COUNTRY[(ground, normal)]
+    if ground in VENUE_COUNTRY:
+        return VENUE_COUNTRY[ground]
+    return CITY_COUNTRY.get(normal) or CITY_COUNTRY.get((city or "").strip(), "")

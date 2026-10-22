@@ -74,9 +74,14 @@ class TeamBook:
         self.teams: dict[str, dict] = {}
 
     def _format(self, team: dict, row: dict) -> _TeamFormat:
-        entry = self.teams.setdefault(team["id"], {
-            "name": team["name"], "gender": row["gender"], "formats": {}})
-        return entry["formats"].setdefault(row["format"], _TeamFormat())
+        entry = self.teams.get(team["id"])
+        if entry is None:
+            entry = self.teams[team["id"]] = {
+                "name": team["name"], "gender": row["gender"], "formats": {}}
+        tf = entry["formats"].get(row["format"])
+        if tf is None:
+            tf = entry["formats"][row["format"]] = _TeamFormat()
+        return tf
 
     def add(self, row: dict, deliveries=()) -> None:
         """Add one matches.json row and the match's parsed deliveries."""
@@ -122,13 +127,14 @@ class TeamBook:
 
     def _add_phases(self, row: dict, deliveries) -> None:
         """Team totals by phase, extras included (§1.10 'Phase rows')."""
-        by_name = {t["name"]: t for t in row["teams"]}
+        # Look each side up once per match, not once per delivery.
+        sides = {t["name"]: self._format(t, row) for t in row["teams"]}
         seen: set[tuple[str, str, int, str]] = set()
         for d in deliveries:
             for side, team in (("batting", d.batting_team), ("bowling", d.bowling_team)):
-                if team not in by_name:
+                tf = sides.get(team)
+                if tf is None:
                     continue
-                tf = self._format(by_name[team], row)
                 ph = tf.phases[side][d.phase]
                 key = (side, team, d.innings, d.phase)
                 if key not in seen:

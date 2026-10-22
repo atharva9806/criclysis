@@ -242,13 +242,15 @@ class GenderAndVenueTests(unittest.TestCase):
 
     def test_ground_pars_are_keyed_by_venue_key(self):
         traces = _synthetic_corpus(200)
-        for i, t in enumerate(traces):
-            t.venue = "County Ground|Bristol" if i % 2 else "County Ground|Taunton"
         model = fit_model("t20i", traces)
-        pars = winprob.venue_pars(traces, model)
+        firsts = {"County Ground|Bristol": [160, 170, 180, 150, 140],
+                  "County Ground|Taunton": [200, 210, 190, 205, 195, 200], "Tiny": [100]}
+        pars = winprob.venue_pars(firsts, model)
         self.assertEqual(set(pars), {"County Ground|Bristol", "County Ground|Taunton"})
-        self.assertEqual(sum(p["matches"] for p in pars.values()),
-                         sum(1 for t in traces if t.first_complete))
+        self.assertEqual(pars["County Ground|Taunton"]["matches"], 6)
+        self.assertEqual(pars["County Ground|Bristol"]["averageFirstInnings"], 160.0)
+        self.assertGreater(pars["County Ground|Taunton"]["par"],
+                           pars["County Ground|Bristol"]["par"])
 
 
 class GoldenRoundTripTests(unittest.TestCase):
@@ -333,5 +335,41 @@ class BuildPerFormatKeyTests(unittest.TestCase):
                           venue_key=lambda venue, city: venue)
             payload = json.loads((tmp / "winprob.json").read_text())
             self.assertEqual(list(payload["formats"]), ["t20i-m"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class OneGroundAverageTests(unittest.TestCase):
+    """A ground's first-innings average is one number (review finding 2):
+    winprob.json's ground pars and venues.json average the same innings."""
+
+    def test_winprob_and_venues_agree(self):
+        import json
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from pipeline.build import build_dataset
+        from tests.fixtures import simulated_matches, write_archive
+        matches = simulated_matches("t20i", 120, seed=8)
+        # Rain-rule and no-result matches are not used to fit the model, but
+        # their completed first innings still count for the ground.
+        for _mid, raw in matches[:15]:
+            raw["info"]["outcome"] = {"winner": raw["info"]["teams"][0], "by": {"runs": 3},
+                                      "method": "D/L"}
+        matches[20][1]["innings"][0]["penalty_runs"] = {"post": 5}
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            archive = tmp / "t20s_json.zip"
+            write_archive(archive, matches)
+            build_dataset(tmp, formats=("t20i",), archives={"t20i": archive}, sha="local")
+            winprob.build(("t20i",), tmp, archives={"t20i": archive}, genders=("male",),
+                          venue_key=lambda venue, city: venue)
+            venues = json.loads((tmp / "venues.json").read_text())["venues"]
+            pars = json.loads((tmp / "winprob.json").read_text())["formats"]["t20i-m"]["venues"]
+            self.assertTrue(pars)
+            for key, par in pars.items():
+                first = venues[key]["formats"]["t20i-m"]["firstInnings"]
+                self.assertEqual((par["matches"], par["averageFirstInnings"]),
+                                 (first["n"], first["avg"]), key)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

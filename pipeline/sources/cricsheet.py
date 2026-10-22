@@ -230,23 +230,6 @@ def phase_for(fmt: str, over: int) -> str:
     return PHASES.get(fmt, PHASES["odi"])[-1][0]
 
 
-def _venue_country(venue: str, city: str) -> str:
-    """Best-effort country attribution for a venue.
-
-    Cricsheet does not carry a country field, so we fall back to a lookup keyed
-    on city. ``enrich.py`` can overwrite this with a better mapping; an unknown
-    country simply drops the venue out of the home/away split rather than
-    guessing.
-    """
-    from ..venues import VENUE_COUNTRY, CITY_COUNTRY
-    if venue in VENUE_COUNTRY:
-        return VENUE_COUNTRY[venue]
-    for name, country in VENUE_COUNTRY.items():
-        if name and name in venue:
-            return country
-    return CITY_COUNTRY.get(city, "")
-
-
 def parse_match(raw: dict, match_id: str, fmt: str,
                 venue_key: str | None = None) -> tuple[MatchInfo, list[Delivery]]:
     """Turn one Cricsheet match document into a MatchInfo plus flat deliveries.
@@ -254,7 +237,7 @@ def parse_match(raw: dict, match_id: str, fmt: str,
     ``venue_key`` is the ground's VenueKey (see :mod:`pipeline.venues`), which
     needs the whole corpus to compute; without it the plain ground name is used.
     """
-    from ..venues import canonical_venue
+    from ..venues import canonical_venue, country_for
 
     info = raw.get("info", {})
     dates = info.get("dates") or [""]
@@ -262,7 +245,7 @@ def parse_match(raw: dict, match_id: str, fmt: str,
     city = info.get("city", "")
     teams = info.get("teams", [])
     outcome = info.get("outcome", {})
-    country = _venue_country(venue, city)
+    country = country_for(venue, city)
     if venue_key is None:
         venue_key = canonical_venue(venue)
 

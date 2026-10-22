@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import FORMATS, GENDERS, SCHEMA_VERSION, format_key
+from .matches import first_innings_of
 from .sources.cricsheet import iter_raw
 from .venues import canonical_venue
 
@@ -536,27 +537,30 @@ def choose_half_life(fmt: str, train: list[MatchTrace], holdout_from: str,
 # ---------------------------------------------------------------------------
 # Par scores by ground
 # ---------------------------------------------------------------------------
-def venue_pars(traces: list[MatchTrace], model: WinModel, min_matches: int = 5,
+def venue_pars(firsts: dict[str, list[int]], model: WinModel, min_matches: int = 5,
                prior: float = 8.0) -> dict[str, dict]:
     """Ground-adjusted par: the format par shifted by how much more or less
     sides score there, shrunk toward zero for grounds with few matches.
 
-    Keyed by VenueKey, so two grounds that share a name (the County Grounds
-    at Bristol and Taunton) are never pooled into one par.
+    ``firsts`` maps a VenueKey to its first-innings totals: every first
+    innings that counts towards a ground's average under
+    :func:`matches.first_innings_total`, over every match of the formatKey.
+    venues.json and teams/ average exactly the same totals, so a ground's
+    average is one number wherever it appears. (The model's training traces
+    are narrower - no rain-rule or no-result matches - but a first innings
+    that ran its course says as much about a ground either way.) Keyed by
+    VenueKey, so grounds that share a name are never pooled.
     """
-    global_mean_totals = [t.first_total for t in traces if t.first_complete]
-    if not global_mean_totals:
+    every = [t for venue, totals in firsts.items() if venue for t in totals]
+    if not every:
         return {}
-    gmean = sum(global_mean_totals) / len(global_mean_totals)
+    gmean = sum(every) / len(every)
     par = model.par_total()
-    by_venue: dict[str, list[int]] = defaultdict(list)
-    for t in traces:
-        if t.first_complete and t.venue:
-            by_venue[t.venue].append(t.first_total)
     out = {}
-    for venue, totals in by_venue.items():
+    for venue in sorted(firsts):
+        totals = firsts[venue]
         n = len(totals)
-        if n < min_matches:
+        if not venue or n < min_matches:
             continue
         shift = (sum(totals) / n - gmean) * n / (n + prior)
         out[venue] = {"matches": n, "averageFirstInnings": round(sum(totals) / n, 1),
@@ -631,8 +635,12 @@ MIN_MODEL_MATCHES = 100
 
 
 def build_model(fmt: str, gender: str, traces: list[MatchTrace],
-                holdout_from: str = HOLDOUT_FROM) -> dict:
-    """Fit, validate and export the model for one formatKey."""
+                holdout_from: str = HOLDOUT_FROM,
+                firsts: dict[str, list[int]] | None = None) -> dict:
+    """Fit, validate and export the model for one formatKey.
+
+    ``firsts`` holds the grounds' first-innings totals (see venue_pars).
+    """
     train = [t for t in traces if t.date < holdout_from]
     test = [t for t in traces if t.date >= holdout_from]
     fk = format_key(fmt, gender)
@@ -655,7 +663,7 @@ def build_model(fmt: str, gender: str, traces: list[MatchTrace],
     payload["halfLifeYears"] = half_life
     payload["validation"] = {"trainMatches": len(train), "testMatches": len(test),
                              "halfLifeSelection": selection, **validation}
-    payload["venues"] = venue_pars(traces, exported)
+    payload["venues"] = venue_pars(firsts or {}, exported)
     payload["golden"] = golden_states(exported)
     log.info("%s: half-life %s, chase Brier %.4f (baseline %.4f), first-innings Brier %.4f, par %d",
              fk, half_life, validation["chase"]["brier"], validation["chase"]["baselineBrier"],
@@ -684,15 +692,24 @@ def build(formats: tuple[str, ...] = LIMITED_FORMATS, out_dir: Path | None = Non
     models: dict[str, dict] = {}
     for fmt in formats:
         by_gender: dict[str, list[MatchTrace]] = {g: [] for g in genders}
-        for trace in iter_traces(fmt, path=(archives or {}).get(fmt), genders=genders,
-                                 venue_key=venue_key):
-            by_gender[trace.gender].append(trace)
+        firsts: dict[str, dict[str, list[int]]] = {g: defaultdict(list) for g in genders}
+        for match_id, raw in iter_raw(fmt, gender=genders, path=(archives or {}).get(fmt)):
+            info = raw.get("info", {})
+            gender = info.get("gender", "male")
+            key = venue_key(info.get("venue", ""), info.get("city"))
+            trace = trace_match(raw, match_id, fmt, gender=None, venue_key=key)
+            if trace:
+                by_gender[gender].append(trace)
+            total = first_innings_of(raw, fmt)
+            if total is not None and key:
+                firsts[gender][key].append(total)
         for gender, traces in by_gender.items():
             if len(traces) < MIN_MODEL_MATCHES:
                 log.warning("%s: only %d usable matches; no model", format_key(fmt, gender),
                             len(traces))
                 continue
-            models[format_key(fmt, gender)] = build_model(fmt, gender, traces, holdout_from)
+            models[format_key(fmt, gender)] = build_model(fmt, gender, traces, holdout_from,
+                                                          firsts[gender])
     # A stable key order: men's then women's, ODI before T20I.
     for gender in GENDERS:
         for fmt in LIMITED_FORMATS:

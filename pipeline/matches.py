@@ -207,6 +207,13 @@ def first_innings_total(row: dict) -> int | None:
     return None
 
 
+def first_innings_of(raw: dict, fmt: str) -> int | None:
+    """:func:`first_innings_total` straight from a Cricsheet document."""
+    info = raw.get("info", {})
+    return first_innings_total({"format": fmt, "scheduledOvers": info.get("overs"),
+                                "innings": innings_rows(raw, info.get("gender", "male"))})
+
+
 def sort_key(row: dict) -> tuple[str, str]:
     """matches.json is ordered by end date, then id, both descending."""
     return row["endDate"], row["id"]

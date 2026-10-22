@@ -48,6 +48,8 @@ class BattingInnings:
     chasing: bool = False
     dismissal: str = ""
     dismissed_by: str = ""
+    dismissed_by_id: str = ""
+    team: str = ""            # the player's side (not exported per innings)
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +58,7 @@ class BattingInnings:
             "f4": self.fours, "f6": self.sixes, "out": self.out,
             "pos": self.position, "inn": self.innings_no,
             "chase": self.chasing, "how": self.dismissal, "by": self.dismissed_by,
+            "byId": self.dismissed_by_id,
         }
 
 
@@ -70,6 +73,7 @@ class BowlingInnings:
     runs: int = 0
     wickets: int = 0
     maidens: int = 0
+    team: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -86,9 +90,18 @@ class PlayerFormat:
     name: str
     fmt: str
     teams: set[str] = field(default_factory=set)
+    # Appearances in a Cricsheet XI (info.players), whether or not they batted
+    # or bowled.
+    matches: int = 0
 
     # --- batting ---------------------------------------------------------
     bat_overall: BatSplit = field(default_factory=BatSplit)
+    # The same balls with only the dismissals that happened while facing
+    # them, i.e. the accounting every per-ball split uses. bat_overall also
+    # counts the batter's dismissals at the other end (run out backing up,
+    # timed out), which no split can hold; comparing a split with
+    # bat_overall would tilt every average towards "above their baseline".
+    bat_per_ball: BatSplit = field(default_factory=BatSplit)
     bat_by_type: defaultdict[str, BatSplit] = field(default_factory=_bat)
     bat_by_family: defaultdict[str, BatSplit] = field(default_factory=_bat)
     bat_by_phase: defaultdict[str, BatSplit] = field(default_factory=_bat)
@@ -106,6 +119,7 @@ class PlayerFormat:
     bat_by_type_phase: defaultdict[str, BatSplit] = field(default_factory=_bat)
     dismissals: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
     dismissed_by_type: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # Head-to-heads are keyed by the opponent's person id.
     vs_bowler: defaultdict[str, BatSplit] = field(default_factory=_bat)
     bat_innings: list[BattingInnings] = field(default_factory=list)
 
@@ -133,6 +147,7 @@ class PlayerFormat:
         args = (runs, faced, out, dot)
 
         self.bat_overall.add(*args)
+        self.bat_per_ball.add(*args)
         if bowler_type:
             self.bat_by_type[bowler_type].add(*args)
             self.bat_by_type_phase[f"{bowler_type}|{d.phase}"].add(*args)
@@ -143,20 +158,24 @@ class PlayerFormat:
             self.bat_by_opposition[d.bowling_team].add(*args)
         if d.country:
             self.bat_by_country[d.country].add(*args)
-        if d.venue:
-            self.bat_by_venue[d.venue].add(*args)
+        if d.venue_key:
+            self.bat_by_venue[d.venue_key].add(*args)
         if home:
             self.bat_by_home[home].add(*args)
         self.bat_by_innings_no[str(d.innings)].add(*args)
-        self.bat_by_chase["chasing" if d.chasing else "setting"].add(*args)
+        # Chasing versus batting first is a limited-overs question. In a Test
+        # only the fourth innings chases, and innings two and three are not
+        # "batting first"; byInningsNo already splits Tests by innings.
+        if self.fmt != "test":
+            self.bat_by_chase["chasing" if d.chasing else "setting"].add(*args)
         if year:
             self.bat_by_year[year].add(*args)
         if position:
             self.bat_by_position[str(position)].add(*args)
         # bat_by_entry is filled by add_entry_phase(), which needs the ball
         # index within the batter's own innings rather than the team's.
-        if d.bowler:
-            self.vs_bowler[d.bowler].add(*args)
+        if d.bowler_id:
+            self.vs_bowler[d.bowler_id].add(*args)
 
     def add_entry_phase(self, phase_key: str, runs: int, faced: bool,
                         out: bool, dot: bool) -> None:
@@ -171,7 +190,7 @@ class PlayerFormat:
     def add_batting_innings(self, inn: BattingInnings) -> None:
         self.bat_innings.append(inn)
         self.bat_overall.innings += 1
-        if inn.dismissal:
+        if inn.out and inn.dismissal:
             self.dismissals[inn.dismissal] += 1
         if inn.position:
             self.bat_by_position[str(inn.position)].innings += 1
@@ -202,10 +221,10 @@ class PlayerFormat:
         if year:
             self.bowl_by_year[year].add(*args)
         self.bowl_by_innings_no[str(d.innings)].add(*args)
-        if d.batter:
-            self.vs_batter[d.batter].add(*args)
-        if wicket and d.wicket_kind:
-            self.wicket_kinds[d.wicket_kind] += 1
+        if d.batter_id:
+            self.vs_batter[d.batter_id].add(*args)
+        if wicket and d.credited_wicket:
+            self.wicket_kinds[d.credited_wicket.kind] += 1
 
     def add_bowling_innings(self, inn: BowlingInnings) -> None:
         self.bowl_innings.append(inn)

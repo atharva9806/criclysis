@@ -55,7 +55,7 @@ ball 1.
 even chance: **260 in ODIs and 150 in T20Is**. Each ground's par is shifted by
 how much more or less teams score there than average. That shift is shrunk
 toward zero for grounds with few matches, so one freak game can't set a
-ground's par. Two examples: Wankhede's ODI par is 293, and the MCG's is 266.
+ground's par. Two examples: Wankhede's ODI par is 293, and the MCG's is 265.
 
 ## Validation
 

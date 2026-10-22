@@ -183,7 +183,13 @@ def _metric_value(split, metric: str) -> float | None:
 
 
 def _baseline(record, dimension: Dimension) -> float | None:
-    overall = record.bat_overall if dimension.discipline == "batting" else record.bowl_overall
+    """The player's own figure that a split is compared with.
+
+    For batting it is taken over every ball faced with the same accounting
+    as the splits (dismissals while facing), so a split and its baseline
+    are like for like.
+    """
+    overall = record.bat_per_ball if dimension.discipline == "batting" else record.bowl_overall
     return _metric_value(overall, dimension.metric)
 
 
@@ -290,30 +296,35 @@ def _format_value(value: float, metric: str) -> str:
 
 
 def _claim_text(dimension: Dimension, subject_label: str, value: float,
-                baseline: float | None, cohort_med: float, percentile: float,
-                balls: int, kind: str, discipline: str) -> str:
-    v = _format_value(value, dimension.metric)
+                baseline: float, percentile: float, cohort_change: float,
+                balls: int, discipline: str) -> str:
+    """Say what was ranked: the change from the player's own baseline.
+
+    The percentile places the player's (sample-size adjusted) ratio of
+    split to baseline among comparable players' ratios for the same split,
+    so the text reports that change and the cohort's median change. The
+    cohort's median *value* would be a different quantity, and putting it
+    next to a percentile of change made the text contradict itself ("bottom
+    1% ... cohort median 29.5" for an average of 34.1).
+    """
+    metric = dimension.metric
     m = dimension.metric_label
-    unit = "balls" if discipline == "batting" else "balls bowled"
-    parts = [f"{subject_label}: {m} of {v}"]
-
-    if baseline is not None and baseline > 0:
-        diff = value - baseline
-        direction = "above" if diff > 0 else "below"
-        parts.append(
-            f"{_format_value(abs(diff), dimension.metric)} {direction} "
-            f"their overall {m} of {_format_value(baseline, dimension.metric)}")
-
+    balls_word = "faced" if discipline == "batting" else "bowled"
+    diff = value - baseline
+    direction = "above" if diff > 0 else "below"
+    change = 100.0 * diff / baseline
     # A percentile of 5 means "only 5% of comparable players rate lower", so it
     # reads as bottom 5% - not bottom 95%.
     if percentile >= 50:
         rank = f"top {max(1.0, 100 - percentile):.0f}%"
     else:
         rank = f"bottom {max(1.0, percentile):.0f}%"
-    parts.append(f"{rank} of comparable players "
-                 f"(cohort median {_format_value(cohort_med, dimension.metric)})")
-    parts.append(f"{balls} {unit}")
-    return " — ".join(parts) + "."
+    return (f"{subject_label}: {m} of {_format_value(value, metric)}, "
+            f"{_format_value(abs(diff), metric)} {direction} their {m} of "
+            f"{_format_value(baseline, metric)} on all balls {balls_word} ({change:+.0f}%) "
+            f"— allowing for sample size, that change is in the {rank} of comparable players "
+            f"(their median change: {100.0 * cohort_change:+.0f}%) "
+            f"— {balls} balls {balls_word}.")
 
 
 def analyse_player(record, cohort: Cohort, fmt: str) -> dict:
@@ -350,7 +361,11 @@ def analyse_player(record, cohort: Cohort, fmt: str) -> dict:
             # Percentile against how far other players deviate from their own
             # baseline in this same split - not against the raw number.
             pct = percentile_of(rel_dist, value / baseline, dimension.higher_is_better)
+            # cohortMedian keeps its meaning: the median of the cohort's
+            # (sample-adjusted) values in this split. The text reports the
+            # median change, the quantity the percentile ranks.
             cohort_med = median(dist)
+            cohort_change = median(rel_dist) - 1.0
 
             # Effect size relative to the player's own baseline.
             rel = (value - baseline) / baseline
@@ -384,8 +399,8 @@ def analyse_player(record, cohort: Cohort, fmt: str) -> dict:
                 balls=split.balls,
                 sample_note=f"{split.balls} balls",
                 confidence=_confidence(split.balls, dimension.min_claim_balls),
-                text=_claim_text(dimension, label, raw, baseline, cohort_med,
-                                 pct, split.balls, kind, dimension.discipline),
+                text=_claim_text(dimension, label, raw, baseline, pct, cohort_change,
+                                 split.balls, dimension.discipline),
                 higher_is_better=dimension.higher_is_better,
             ))
 

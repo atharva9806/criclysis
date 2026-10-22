@@ -17,8 +17,8 @@ jobs:
     name: Pipeline tests (Python)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # Standard library only - nothing to install.
@@ -29,8 +29,8 @@ jobs:
     name: CI scripts (plan and smoke tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Shellcheck
@@ -52,8 +52,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -102,7 +102,7 @@ jobs:
         shell: bash
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check for the importer
         id: gate
@@ -114,7 +114,7 @@ jobs:
             echo "::notice title=e2e skipped::web/scripts/import/index.mjs does not exist yet. The end-to-end steps start running when the importer lands."
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.gate.outputs.ready == 'true'
         with:
           node-version: "22"

@@ -47,10 +47,62 @@ export function capitalise(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
-/** "won 9 of 14 (64.3%)": the percentage only when the sample reaches `minMatches`. */
-export function record(r: { matches: number; won: number; winPct: number | null }, minMatches: number): string {
+type Decided = { won: number; lost: number; tied: number; drawn: number };
+
+/** Decided matches: the denominator of winPct (§1.10). No-results are not decided. */
+export function decided(r: Decided): number {
+  return r.won + r.lost + r.tied + r.drawn;
+}
+
+/** A team's win percentage, or a dash below `minMatches` decided matches (§4.4). */
+export function winPct(r: Decided & { winPct: number | null }, minMatches: number): string {
+  return decided(r) >= minMatches ? pct(r.winPct) : DASH;
+}
+
+/** "won 9 of 14 (64.3%)": the percentage only from `minMatches` decided matches. */
+export function record(r: Decided & { matches: number; winPct: number | null }, minMatches: number): string {
   const base = `won ${r.won} of ${r.matches}`;
-  return r.matches >= minMatches && r.winPct !== null ? `${base} (${r.winPct.toFixed(1)}%)` : base;
+  return decided(r) >= minMatches && r.winPct !== null ? `${base} (${r.winPct.toFixed(1)}%)` : base;
+}
+
+/**
+ * Win percentages after winning and after losing the toss (TeamFormat.toss),
+ * each gated on its decided matches. Decided matches after winning the toss
+ * come from the two decision records; after losing it, from the overall
+ * record minus those, which is only valid when every match and every won
+ * toss is accounted for. Otherwise that percentage is not shown.
+ */
+export function tossWinPcts(
+  toss: { won: number; lost: number; winPctWonToss: number | null; winPctLostToss: number | null; decisions: { bat: Decided & { matches: number }; field: Decided & { matches: number } } },
+  overall: Decided & { matches: number },
+  minMatches: number,
+): { won: string; lost: string } {
+  const decidedWon = decided(toss.decisions.bat) + decided(toss.decisions.field);
+  const complete = toss.won + toss.lost === overall.matches && toss.decisions.bat.matches + toss.decisions.field.matches === toss.won;
+  const decidedLost = complete ? decided(overall) - decidedWon : null;
+  return {
+    won: decidedWon >= minMatches ? pct(toss.winPctWonToss) : DASH,
+    lost: decidedLost !== null && decidedLost >= minMatches ? pct(toss.winPctLostToss) : DASH,
+  };
+}
+
+/**
+ * Why no fixture plan can be built for two teams in a format, or null when
+ * one can. `formats` lists the formats each team has records in.
+ */
+export function planUnavailable(
+  team: { label: string; gender: string; formats: Partial<Record<Fmt, unknown>> } | undefined,
+  opp: { label: string; gender: string; formats: Partial<Record<Fmt, unknown>> } | undefined,
+  fmt: Fmt,
+): string | null {
+  if (!team || !opp) return "One of these teams is not in the data.";
+  if (team === opp) return "Choose two different teams.";
+  if (team.gender !== opp.gender) return `${team.label} and ${opp.label} play in different competitions (men's and women's): choose two teams of the same gender.`;
+  const without = [team, opp].filter((t) => !t.formats[fmt]).map((t) => t.label);
+  if (without.length) {
+    return `No ${FORMAT_LABEL[fmt]} data for this pairing: ${without.join(" and ")} ${without.length > 1 ? "have" : "has"} no ${FORMAT_LABEL[fmt]} matches in the data.`;
+  }
+  return null;
 }
 
 // Subject labels for split dimensions, as the pipeline words them (pipeline/analyze.py).

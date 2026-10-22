@@ -3,7 +3,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { MatchRow, SplitRow } from "@/lib/contract/db";
 import type { Fmt, Record5 } from "@/lib/contract/pipeline";
-import { DASH, FORMAT_LABEL, date, genderWord, int, num, pct } from "@/lib/format";
+import { DASH, FORMAT_LABEL, date, decided, genderWord, int, num, pct, winPct } from "@/lib/format";
+import { pageNav } from "@/lib/params";
 import { DataCredit } from "./DataCredit";
 
 export function PageHeader({ eyebrow, title, sub, children }: { eyebrow?: string; title: string; sub?: ReactNode; children?: ReactNode }) {
@@ -164,7 +165,7 @@ export function SplitTable({
   );
 }
 
-/** W/L/T/D/NR cells; the win percentage is hidden below the team threshold (§4.4). */
+/** W/L/T/D/NR cells; the win percentage is hidden below the team threshold of decided matches (§4.4). */
 export function RecordCells({ r, minMatches }: { r: Record5; minMatches: number }) {
   return (
     <>
@@ -174,8 +175,8 @@ export function RecordCells({ r, minMatches }: { r: Record5; minMatches: number 
       <td className="text-right tabular-nums">{int(r.tied)}</td>
       <td className="text-right tabular-nums">{int(r.drawn)}</td>
       <td className="text-right tabular-nums">{int(r.noResult)}</td>
-      <td className="text-right tabular-nums" title={r.matches < minMatches ? `Shown from ${minMatches} matches` : undefined}>
-        {r.matches >= minMatches ? pct(r.winPct) : DASH}
+      <td className="text-right tabular-nums" title={decided(r) < minMatches ? `Shown from ${minMatches} decided matches` : undefined}>
+        {winPct(r, minMatches)}
       </td>
     </>
   );
@@ -197,15 +198,15 @@ export function RecordHeads({ first }: { first: string }) {
 }
 
 export function Pagination({ page, pageSize, total, href }: { page: number; pageSize: number; total: number; href: (p: number) => string }) {
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  if (pages <= 1) return null;
+  const nav = pageNav(page, pageSize, total);
+  if (nav.pages <= 1 && !nav.pastEnd) return null;
   return (
     <nav className="mt-6 flex items-center justify-between text-sm" aria-label="Pages">
-      {page > 1 ? <Link className="btn-ghost px-0" href={href(page - 1)}>← Previous</Link> : <span />}
+      {nav.prev ? <Link className="btn-ghost px-0" href={href(nav.prev)}>← {nav.pastEnd ? "Last page" : "Previous"}</Link> : <span />}
       <span className="text-[#6e6e73]">
-        Page {page} of {pages}
+        {nav.pastEnd ? `Page ${page} is past the end (${nav.pages} ${nav.pages === 1 ? "page" : "pages"})` : `Page ${page} of ${nav.pages}`}
       </span>
-      {page < pages ? <Link className="btn-ghost px-0" href={href(page + 1)}>Next →</Link> : <span />}
+      {nav.next ? <Link className="btn-ghost px-0" href={href(nav.next)}>Next →</Link> : <span />}
     </nav>
   );
 }

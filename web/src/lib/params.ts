@@ -50,3 +50,17 @@ export function qs(values: Record<string, string | number | undefined | null>): 
   const s = p.toString();
   return s ? `?${s}` : "";
 }
+
+/**
+ * Navigation for a paged list. A page past the end (an old link, or a filter
+ * that now matches fewer rows) keeps a way back: `prev` points at the last page.
+ */
+export function pageNav(page: number, pageSize: number, total: number) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  return {
+    pages,
+    pastEnd: page > pages,
+    prev: page > 1 ? Math.min(page - 1, pages) : null,
+    next: page < pages ? page + 1 : null,
+  };
+}

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// Compares a build's source fingerprint with the latest complete import
+// Compares a build's source fingerprint with the latest full, complete import
 // (docs/ARCHITECTURE.md §3.1 step 4).
 //
 //   node scripts/import/check-fingerprint.mjs <path/to/fingerprint.json>
 //
 // Prints exactly one line on stdout, `changed` or `unchanged`, and appends
 // `changed=true|false` to $GITHUB_OUTPUT when that is set. A database with no
-// dataset_meta table or no complete import counts as `changed`. Exits
+// dataset_meta table or no complete import counts as `changed`. Partial runs
+// (--format-keys, status 'partial') are ignored: they import only some
+// formatKeys, so their fingerprint does not describe the database. Exits
 // non-zero only on a real error (unreadable file, unreachable database).
 import { appendFileSync, readFileSync } from "node:fs";
 import { config } from "dotenv";

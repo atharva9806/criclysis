@@ -305,7 +305,10 @@ async function loadPlayers(q: ListQuery = {}): Promise<ListResult> {
     name: sql`p.name ASC`,
   };
 
-  const res = await db.execute<Record<string, unknown>>(sql`
+  // The filtered set, shared by the page query and the count. The count is a
+  // separate query (as in listMatches): count(*) OVER () next to LIMIT/OFFSET
+  // returns no row, and so no total, for a page past the end.
+  const filtered = sql`
     WITH cs AS (
       SELECT player_id,
         array_agg(format_key::text ORDER BY format_key) AS fks,
@@ -321,12 +324,16 @@ async function loadPlayers(q: ListQuery = {}): Promise<ListResult> {
         CASE WHEN wickets > 0 THEN runs_conceded::float8 / wickets END AS bowl_avg,
         CASE WHEN bowl_balls > 0 THEN runs_conceded * 6::float8 / bowl_balls END AS econ
       FROM cs
-    )
-    SELECT p.slug, p.name, p.gender, p.country, p.teams, p.role, p.last_played, r.*, count(*) OVER()::int AS total
-    FROM r JOIN players p ON p.id = r.player_id
-    ${where.length ? sql`WHERE ${sql.join(where, sql` AND `)}` : sql``}
-    ORDER BY ${order[sort]}, p.name ASC, p.id ASC
-    LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`);
+    )`;
+  const from = sql`FROM r JOIN players p ON p.id = r.player_id ${where.length ? sql`WHERE ${sql.join(where, sql` AND `)}` : sql``}`;
+  const [res, countRes] = await Promise.all([
+    db.execute<Record<string, unknown>>(sql`
+      ${filtered}
+      SELECT p.slug, p.name, p.gender, p.country, p.teams, p.role, p.last_played, r.* ${from}
+      ORDER BY ${order[sort]}, p.name ASC, p.id ASC
+      LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
+    db.execute<{ total: number }>(sql`${filtered} SELECT count(*)::int AS total ${from}`),
+  ]);
 
   const rows = res.rows.map((r) => ({
     slug: r.slug as string,
@@ -351,7 +358,7 @@ async function loadPlayers(q: ListQuery = {}): Promise<ListResult> {
     bowlAvg: r.bowl_avg as number | null,
     econ: r.econ as number | null,
   }));
-  return { rows, total: (res.rows[0]?.total as number | undefined) ?? 0, page, pageSize, minBalls };
+  return { rows, total: countRes.rows[0]?.total ?? 0, page, pageSize, minBalls };
 }
 
 /** Run or wicket leaders for one formatKey (index on format_key, runs/wickets DESC). */

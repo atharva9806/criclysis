@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDatasetMeta, getTeam } from "@/lib/data";
 import { fmtOfKey } from "@/lib/data/rows";
-import { DASH, date, formatKeyLabel, genderWord, int, num, pct, plural, record } from "@/lib/format";
+import { DASH, date, formatKeyLabel, genderWord, int, num, pct, plural, record, tossWinPcts } from "@/lib/format";
 import { phaseRates } from "@/lib/metrics";
 import { fmtParam, qs, type SearchParams } from "@/lib/params";
 import type { PhaseRow } from "@/lib/contract/pipeline";
@@ -56,6 +56,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const minInn = meta?.thresholds.venueMinInnings ?? 3;
   const d = t.detail;
   const avg = (x: { n: number; avg: number | null }) => (x.n >= minInn ? num(x.avg, 1) : DASH);
+  const toss = tossWinPcts(d.toss, t.record, minM);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
@@ -69,7 +70,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
       </div>
       <FormatTabs formats={t.formats} active={fmt} href={(f) => `/teams/${teamId}${qs({ f })}`} />
 
-      <Section title="Record" sub={`Win percentage = won / (won + lost + tied + drawn), shown from ${minM} matches.`}>
+      <Section title="Record" sub={`Win percentage = won / (won + lost + tied + drawn), shown from ${minM} of those decided matches.`}>
         <TableWrap caption="Record">
           <thead><RecordHeads first="" /></thead>
           <tbody>
@@ -85,8 +86,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
           </tbody>
         </TableWrap>
         <p className="mt-2 text-sm text-[#6e6e73]">
-          Tosses won {d.toss.won}, lost {d.toss.lost}. Win % after winning the toss {d.toss.won >= minM ? pct(d.toss.winPctWonToss) : DASH}; after losing it{" "}
-          {d.toss.lost >= minM ? pct(d.toss.winPctLostToss) : DASH}.
+          Tosses won {d.toss.won}, lost {d.toss.lost}. Win % after winning the toss {toss.won}; after losing it {toss.lost}.
         </p>
       </Section>
 

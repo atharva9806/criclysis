@@ -5,7 +5,7 @@ import type { DatasetMeta } from "@/lib/contract/db";
 import type { FormatKey } from "@/lib/contract/pipeline";
 import { cached } from "./cache";
 
-/** The active dataset: the latest import run with status 'complete'. */
+/** The active dataset: the latest full import run (status 'complete'; partial runs are excluded). */
 async function loadDatasetMeta(): Promise<DatasetMeta | null> {
   const [row] = await db
     .select()

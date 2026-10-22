@@ -91,7 +91,7 @@ export default async function PlayersPage({ searchParams }: { searchParams: Prom
             </tbody>
           </TableWrap>
         ) : (
-          <Muted>No players match these filters.</Muted>
+          <Muted>{result.total ? `Page ${result.page} is past the end of this list; the link below goes back.` : "No players match these filters."}</Muted>
         )}
       </div>
       <Pagination page={result.page} pageSize={result.pageSize} total={result.total} href={(p) => `/players${qs({ ...params, page: p })}`} />

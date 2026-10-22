@@ -37,7 +37,10 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
       <p className="my-4 text-sm text-[#6e6e73]">
         {int(result.total)} matches{scope ? ` · ${scope}` : ""}
       </p>
-      <MatchGrid matches={result.rows} empty="No matches found. Results appear here once a build with matches.json has been imported." />
+      <MatchGrid
+        matches={result.rows}
+        empty={result.total ? `Page ${q.page} is past the end of this list; the link below goes back.` : "No matches found. Results appear here once a build with matches.json has been imported."}
+      />
       <Pagination page={q.page} pageSize={PAGE_SIZE} total={result.total} href={(p) => `/matches${qs({ ...params, page: p })}`} />
     </div>
   );

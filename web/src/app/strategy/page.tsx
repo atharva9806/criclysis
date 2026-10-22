@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { SplitRow, TraitRow } from "@/lib/contract/db";
 import { buildMatchupPlan, buildPlayerDossier, getDatasetMeta, listPlayers, listTeams } from "@/lib/data";
 import { fmtOfKey } from "@/lib/data/rows";
-import { FORMAT_LABEL, formatKeyLabel, int, plural, splitLabel, type LabelContext } from "@/lib/format";
+import { FORMAT_LABEL, formatKeyLabel, int, planUnavailable, plural, splitLabel, type LabelContext } from "@/lib/format";
 import { fmtParam, qs, str, type SearchParams } from "@/lib/params";
 import { MatchGrid, Muted, PageHeader, Section, Select, SplitTable } from "@/components/data";
 
@@ -172,7 +172,9 @@ async function TeamMode({ team, opp, fmt, minMatches }: { team?: string; opp?: s
     return <div className="mt-6"><Muted>Team records are not in this build yet.</Muted></div>;
   }
   const f = fmt ?? "odi";
-  const plan = team && opp && team !== opp ? await buildMatchupPlan(team, opp, f) : null;
+  // Say why there is no plan rather than fall back to another format.
+  const unavailable = team && opp ? planUnavailable(teams.find((t) => t.id === team), teams.find((t) => t.id === opp), f) : null;
+  const plan = team && opp && !unavailable ? await buildMatchupPlan(team, opp, f) : null;
   const options = teams.map((t) => [t.id, t.label] as [string, string]);
 
   return (
@@ -187,10 +189,10 @@ async function TeamMode({ team, opp, fmt, minMatches }: { team?: string; opp?: s
       {!team || !opp ? (
         <div className="mt-6"><Muted>Choose two teams of the same gender to see their records against each other and the opponent&apos;s patterns.</Muted></div>
       ) : !plan ? (
-        <div className="mt-6"><Muted>No {FORMAT_LABEL[f]} records for both of these teams.</Muted></div>
+        <div className="mt-6"><Muted>{unavailable ?? `No ${FORMAT_LABEL[f]} data for this pairing.`}</Muted></div>
       ) : (
         <>
-          <Section title={`${plan.team.label} v ${plan.opponent.label}, ${formatKeyLabel(plan.formatKey)}`} sub={`Win percentages are shown from ${minMatches} matches.`}>
+          <Section title={`${plan.team.label} v ${plan.opponent.label}, ${formatKeyLabel(plan.formatKey)}`} sub={`Win percentages are shown from ${minMatches} decided matches.`}>
             <div className="grid gap-4 md:grid-cols-2">
               {plan.lines.map((g) => (
                 <div key={g.heading} className="card p-5">

@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { TeamListRow } from "@/lib/contract/db";
 import type { Fmt, Gender } from "@/lib/contract/pipeline";
 import { getDatasetMeta, listTeams } from "@/lib/data";
-import { DASH, FORMAT_LABEL, genderWord, int, pct, year } from "@/lib/format";
+import { DASH, FORMAT_LABEL, genderWord, int, winPct, year } from "@/lib/format";
 import { genderParam, genderSlug, type SearchParams } from "@/lib/params";
 import { Muted, PageHeader, Section, TableWrap } from "@/components/data";
 
@@ -31,7 +31,7 @@ function TeamTable({ teams, minMatches }: { teams: TeamListRow[]; minMatches: nu
               const r = t.formats[f];
               return (
                 <td key={f} className="text-right tabular-nums">
-                  {r ? `${int(r.matches)} · ${int(r.won)} · ${r.matches >= minMatches ? pct(r.winPct) : DASH}` : DASH}
+                  {r ? `${int(r.matches)} · ${int(r.won)} · ${winPct(r, minMatches)}` : DASH}
                 </td>
               );
             })}
@@ -56,7 +56,7 @@ export default async function TeamsPage({ searchParams }: { searchParams: Promis
       <PageHeader
         eyebrow="Teams"
         title="Every international side in the data."
-        sub={`Teams as Cricsheet names them, including associate nations. Win percentages count wins against decided and drawn matches, and are shown from ${minMatches} matches.`}
+        sub={`Teams as Cricsheet names them, including associate nations. Win percentages count wins against decided and drawn matches (no-results are left out), and are shown from ${minMatches} such matches.`}
       />
       {allGenders.length > 1 ? (
         <nav className="segment mb-6" aria-label="Gender">

@@ -9,7 +9,7 @@ import { cached } from "./cache";
 import { getDatasetMeta } from "./meta";
 import { getPlayerSummary } from "./players";
 import { getHeadToHead, getTeam } from "./teams";
-import { toTraitRow } from "./rows";
+import { fmtOfKey, toTraitRow } from "./rows";
 
 /**
  * A scouting dossier built only from stored evidence: the player's claims
@@ -71,9 +71,14 @@ function phaseLines(rows: PhaseRow[], what: "scores" | "concedes"): DossierLine[
  * their own weaknesses. Every line carries the sample it rests on.
  */
 async function loadMatchupPlan(teamId: string, oppId: string, fmt: Fmt): Promise<MatchupPlan | null> {
-  const [team, opp, h2h, meta] = await Promise.all([getTeam(teamId, fmt), getTeam(oppId, fmt), getHeadToHead(teamId, oppId, fmt), getDatasetMeta()]);
-  if (!team || !opp || team.formatKey !== opp.formatKey) return null;
+  const [team, opp, meta] = await Promise.all([getTeam(teamId, fmt), getTeam(oppId, fmt), getDatasetMeta()]);
+  // getTeam falls back to a team's most-played format. A plan is built only
+  // when both teams have the requested format (and the same gender), so every
+  // section, the head to head and every link use that one formatKey.
+  if (!team || !opp || fmtOfKey(team.formatKey) !== fmt || team.formatKey !== opp.formatKey) return null;
   const fk = team.formatKey;
+  const h2h = await getHeadToHead(teamId, oppId, fmt);
+  if (h2h.formatKey !== fk) return null;
   const minM = meta?.thresholds.teamMinMatches ?? 5;
   const T = team.team.label;
   const O = opp.team.label;

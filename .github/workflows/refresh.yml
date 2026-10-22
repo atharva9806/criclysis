@@ -84,9 +84,9 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -96,7 +96,7 @@ jobs:
 
       # §3.1 step 4 (npm ci) comes first, so migrations do not depend on the
       # fetch or the build.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.plan.outputs.node == 'true'
         with:
           node-version: "22"
@@ -213,7 +213,7 @@ jobs:
       # §3.1 step 9.
       - name: Upload the build (import=false)
         if: always() && env.DO_IMPORT == 'false'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-out-${{ github.run_id }}
           path: data/out*
@@ -222,7 +222,7 @@ jobs:
 
       - name: Upload the manifest and import report
         if: always() && env.DO_IMPORT == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: refresh-report-${{ github.run_id }}
           path: |
@@ -247,7 +247,7 @@ jobs:
         shell: bash
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check that there is something to migrate
         id: gate
@@ -262,7 +262,7 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.gate.outputs.ready == 'true'
         with:
           node-version: "22"

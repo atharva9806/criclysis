@@ -173,8 +173,7 @@ class TestClaimText(unittest.TestCase):
         from pipeline.analyze import Dimension, _claim_text
         dim = Dimension("vs_type", "Bowling type", "bat_by_type", "batting",
                         "average", "average", True)
-        return _claim_text(dim, "Leg break", 22.0, 45.0, 33.0, percentile,
-                           400, "weakness", "batting")
+        return _claim_text(dim, "Leg break", 22.0, 45.0, percentile, -0.05, 400, "batting")
 
     def test_low_percentile_reads_as_bottom(self):
         self.assertIn("bottom 5%", self._text(5.0))
@@ -187,4 +186,5 @@ class TestClaimText(unittest.TestCase):
         text = self._text(5.0)
         self.assertIn("400 balls", text)
         self.assertIn("45.0", text)     # the player's own baseline
-        self.assertIn("33.0", text)     # the cohort median
+        self.assertIn("-51%", text)     # the change that was ranked
+        self.assertIn("-5%", text)      # the cohort's median change

@@ -96,6 +96,12 @@ class PlayerFormat:
 
     # --- batting ---------------------------------------------------------
     bat_overall: BatSplit = field(default_factory=BatSplit)
+    # The same balls with only the dismissals that happened while facing
+    # them, i.e. the accounting every per-ball split uses. bat_overall also
+    # counts the batter's dismissals at the other end (run out backing up,
+    # timed out), which no split can hold; comparing a split with
+    # bat_overall would tilt every average towards "above their baseline".
+    bat_per_ball: BatSplit = field(default_factory=BatSplit)
     bat_by_type: defaultdict[str, BatSplit] = field(default_factory=_bat)
     bat_by_family: defaultdict[str, BatSplit] = field(default_factory=_bat)
     bat_by_phase: defaultdict[str, BatSplit] = field(default_factory=_bat)
@@ -141,6 +147,7 @@ class PlayerFormat:
         args = (runs, faced, out, dot)
 
         self.bat_overall.add(*args)
+        self.bat_per_ball.add(*args)
         if bowler_type:
             self.bat_by_type[bowler_type].add(*args)
             self.bat_by_type_phase[f"{bowler_type}|{d.phase}"].add(*args)
@@ -156,7 +163,11 @@ class PlayerFormat:
         if home:
             self.bat_by_home[home].add(*args)
         self.bat_by_innings_no[str(d.innings)].add(*args)
-        self.bat_by_chase["chasing" if d.chasing else "setting"].add(*args)
+        # Chasing versus batting first is a limited-overs question. In a Test
+        # only the fourth innings chases, and innings two and three are not
+        # "batting first"; byInningsNo already splits Tests by innings.
+        if self.fmt != "test":
+            self.bat_by_chase["chasing" if d.chasing else "setting"].add(*args)
         if year:
             self.bat_by_year[year].add(*args)
         if position:

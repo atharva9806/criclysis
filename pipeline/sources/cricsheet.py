@@ -263,12 +263,13 @@ def phase_for(fmt: str, over: int) -> str:
     return PHASES.get(fmt, PHASES["odi"])[-1][0]
 
 
-def parse_match(raw: dict, match_id: str, fmt: str,
-                venue_key: str | None = None) -> tuple[MatchInfo, list[Delivery]]:
+def parse_match(raw: dict, match_id: str, fmt: str, venue_key: str | None = None,
+                country: str | None = None) -> tuple[MatchInfo, list[Delivery]]:
     """Turn one Cricsheet match document into a MatchInfo plus flat deliveries.
 
-    ``venue_key`` is the ground's VenueKey (see :mod:`pipeline.venues`), which
-    needs the whole corpus to compute; without it the plain ground name is used.
+    ``venue_key`` and ``country`` come from the corpus's VenueIndex (see
+    :mod:`pipeline.venues`), which needs the whole corpus; without them the
+    plain ground name and this match's venue and city are used.
     """
     from ..venues import canonical_venue, country_for
 
@@ -278,7 +279,8 @@ def parse_match(raw: dict, match_id: str, fmt: str,
     city = info.get("city", "")
     teams = info.get("teams", [])
     outcome = info.get("outcome", {})
-    country = country_for(venue, city)
+    if country is None:
+        country = country_for(venue, city)
     if venue_key is None:
         venue_key = canonical_venue(venue)
 

@@ -76,8 +76,11 @@ class Builder:
     def add(self, fmt: str, match_id: str, raw: dict) -> None:
         info = raw.get("info", {})
         gender = info.get("gender", "male")
-        key = self.corpus.venues.key(info.get("venue", ""), info.get("city"))
-        match, deliveries = parse_match(raw, match_id, fmt, venue_key=key)
+        venues = self.corpus.venues
+        key = venues.key(info.get("venue", ""), info.get("city"))
+        match, deliveries = parse_match(raw, match_id, fmt, venue_key=key,
+                                        country=venues.country(info.get("venue", ""),
+                                                               info.get("city")))
         self.aggregator(fmt, gender).add_match(match, deliveries)
         row = build_match_row(raw, match_id, fmt, venue_key=key, country=match.country)
         self.matches.append(row)

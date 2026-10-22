@@ -46,6 +46,17 @@ class CountryTests(unittest.TestCase):
     def test_unknown_stays_unknown(self):
         self.assertEqual(country_for("Some Field", "Nowhere"), "")
 
+    def test_a_ground_has_one_country_whatever_the_match_says(self):
+        index = VenueIndex()
+        for venue, city in (("Warner Park", "Basseterre"), ("Warner Park", "St Kitts"),
+                            ("Sylhet International Cricket Stadium", "Sylhet"),
+                            ("Sylhet International Cricket Stadium", None)):
+            index.add(venue, city)
+        self.assertEqual(index.country("Warner Park", "St Kitts"), "West Indies")
+        self.assertEqual(index.country("Sylhet International Cricket Stadium", None),
+                         "Bangladesh")
+        self.assertEqual(index.country("Unknown Oval", None), "")
+
     def test_parsed_matches_use_the_same_function(self):
         raw = simple_t20()
         raw["info"].update(venue="Shere Bangla National Stadium, Mirpur", city="Dhaka")
@@ -88,6 +99,11 @@ class CorpusCountryTests(unittest.TestCase):
             if country_for(index.key(venue, city), city) != country:
                 problems.append((venue, city, n, "key", index.key(venue, city)))
         self.assertEqual(problems, [])
+        # And every ground has one country, whatever each match says.
+        by_key = collections.defaultdict(set)
+        for (venue, city) in pairs:
+            by_key[index.key(venue, city)].add(index.country(venue, city))
+        self.assertEqual({k: v for k, v in by_key.items() if len(v) > 1}, {})
 
 
 if __name__ == "__main__":

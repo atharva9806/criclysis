@@ -79,7 +79,7 @@ CITY_COUNTRY: dict[str, str] = {
     "Windhoek": "Namibia", "Kampala": "Uganda", "Nairobi": "Kenya",
     "Muscat": "Oman", "Al Amerat": "Oman", "Kirtipur": "Nepal",
     "Kathmandu": "Nepal", "Singapore": "Singapore", "Kuala Lumpur": "Malaysia",
-    "Hong Kong": "Hong Kong", "Doha": "Qatar", "Al Khobar": "Saudi Arabia",
+    "Hong Kong": "Hong Kong", "Mong Kok": "Hong Kong", "Doha": "Qatar", "Al Khobar": "Saudi Arabia",
 }
 
 # Venues whose city is absent or ambiguous in the source data.
@@ -298,6 +298,18 @@ class VenueIndex:
         if self._raw_cities.get(ground):
             return _most_common(self._raw_cities[ground])
         return ""
+
+
+    def country(self, venue: str, city: str | None) -> str:
+        """The country of the ground at ``venue`` (see country_for).
+
+        A VenueKey names one ground, so when this match's city is missing or
+        only an island, the ground's city from its other matches decides:
+        Warner Park is in Basseterre whether a match says "St Kitts" or
+        "Basseterre".
+        """
+        key = self.key(venue, city)
+        return country_for(key, city) or country_for(key, self.city(key))
 
 
 def _most_common(counts: Counter) -> str:

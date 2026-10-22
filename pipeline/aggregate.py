@@ -12,6 +12,7 @@ from collections import defaultdict
 
 from .config import ALL_FORMATS, format_key
 from .metrics.player import BattingInnings, BowlingInnings, PlayerFormat
+from .sources.cricsheet import NOT_DISMISSALS
 from .styles import family as style_family
 from .venues import TEAM_HOME
 
@@ -96,7 +97,7 @@ class Aggregator:
         year = (match.date or "")[:4]
 
         # --- per-innings state -------------------------------------------
-        # batting position is the order in which batters first face a ball
+        # batting position is the order in which batters arrive at the crease
         order: dict[tuple[int, str], int] = {}
         next_position: dict[int, int] = defaultdict(lambda: 1)
         bat_innings: dict[tuple[int, str], BattingInnings] = {}
@@ -129,15 +130,41 @@ class Aggregator:
                 self.names[pid] = (match.date, name)
 
     # ------------------------------------------------------------------
+    def _batting_innings(self, d, person_id: str, name: str, order, next_position,
+                         bat_innings) -> BattingInnings:
+        """The innings of a batter at the crease (or dismissed) on this ball,
+        opened on their first appearance - facing, at the non-striker's end,
+        or out without facing (timed out) - which fixes their position."""
+        key = (d.innings, person_id)
+        inn = bat_innings.get(key)
+        if inn is None:
+            order[key] = next_position[d.innings]
+            next_position[d.innings] += 1
+            inn = BattingInnings(
+                match_id=d.match_id, date=d.date, opposition=d.bowling_team,
+                venue=d.venue, country=d.country, position=order[key],
+                innings_no=d.innings, chasing=d.chasing, team=d.batting_team)
+            bat_innings[key] = inn
+            player = self.player(person_id, name)
+            player.teams.add(d.batting_team)
+        elif not inn.out and inn.dismissal in NOT_DISMISSALS:
+            # Back at the crease after retiring hurt: the retirement no
+            # longer describes how the innings ended.
+            inn.dismissal = ""
+        return inn
+
     def _add_delivery(self, d, match, year, order, next_position,
                       bat_innings, bowl_innings, balls_faced,
                       over_runs, over_balls) -> None:
         bat_key = (d.innings, d.batter_id)
         bowl_key = (d.innings, d.bowler_id)
 
-        if bat_key not in order:
-            order[bat_key] = next_position[d.innings]
-            next_position[d.innings] += 1
+        # Both batters at the crease have an innings, in order of arrival,
+        # including one who is not out without ever facing a ball.
+        inn = self._batting_innings(d, d.batter_id, d.batter, order, next_position, bat_innings)
+        if d.non_striker_id:
+            self._batting_innings(d, d.non_striker_id, d.non_striker, order, next_position,
+                                  bat_innings)
         position = order[bat_key]
 
         bowler_type = self.styles.get(d.bowler_id, "")
@@ -149,12 +176,14 @@ class Aggregator:
         bat_home = self._home_flag(d.batting_team, d.country)
         bowl_home = self._home_flag(d.bowling_team, d.country)
 
-        out_here = bool(d.wicket_kind) and d.player_out_id == d.batter_id
-        wicket_credited = d.bowler_credited and bool(d.wicket_kind)
+        # Retiring hurt (or not out) is not a dismissal: the batter is not out.
+        striker_out = d.dismissal_of(d.batter_id)
+        out_here = striker_out is not None
+        credited = d.credited_wicket
+        wicket_credited = credited is not None
 
         # --- batter ------------------------------------------------------
         batter = self.player(d.batter_id, d.batter)
-        batter.teams.add(d.batting_team)
         batter.add_batting_ball(
             d, bowler_type=bowler_type, bowler_family=bowler_family,
             home=bat_home, position=position, year=year, out=out_here)
@@ -165,13 +194,6 @@ class Aggregator:
         if out_here and bowler_type:
             batter.dismissed_by_type[bowler_type] += 1
 
-        inn = bat_innings.get(bat_key)
-        if inn is None:
-            inn = BattingInnings(
-                match_id=d.match_id, date=d.date, opposition=d.bowling_team,
-                venue=d.venue, country=d.country, position=position,
-                innings_no=d.innings, chasing=d.chasing, team=d.batting_team)
-            bat_innings[bat_key] = inn
         inn.runs += d.runs_batter
         if d.is_batter_ball:
             inn.balls += 1
@@ -179,35 +201,28 @@ class Aggregator:
             inn.fours += 1
         elif d.runs_batter == 6:
             inn.sixes += 1
-        if out_here:
-            inn.out = True
-            inn.dismissal = d.wicket_kind or ""
-            inn.dismissed_by = d.bowler if d.bowler_credited else ""
-            inn.dismissed_by_id = d.bowler_id if d.bowler_credited else ""
 
-        # --- batter dismissed at the other end -----------------------------
-        # A non-striker run out never faces the ball, but it is still a
-        # dismissal and still counts against their batting average. We record
-        # it in the overall figures and the innings log, but deliberately keep
-        # it out of the bowling-type splits: being run out backing up says
-        # nothing about how the batter plays leg spin.
-        if d.wicket_kind and d.player_out_id and d.player_out_id != d.batter_id:
-            other = self.player(d.player_out_id, d.player_out or "")
-            other.teams.add(d.batting_team)
-            other.bat_overall.outs += 1
-            other_key = (d.innings, d.player_out_id)
-            if other_key not in order:
-                order[other_key] = next_position[d.innings]
-                next_position[d.innings] += 1
-            oinn = bat_innings.get(other_key)
-            if oinn is None:
-                oinn = BattingInnings(
-                    match_id=d.match_id, date=d.date, opposition=d.bowling_team,
-                    venue=d.venue, country=d.country, position=order[other_key],
-                    innings_no=d.innings, chasing=d.chasing, team=d.batting_team)
-                bat_innings[other_key] = oinn
-            oinn.out = True
-            oinn.dismissal = d.wicket_kind
+        # --- every wicket on the ball ------------------------------------
+        # A batter dismissed without facing it - run out at the other end,
+        # timed out - is out all the same and counts against their average.
+        # We record it in the overall figures and the innings log, but
+        # deliberately keep it out of the per-ball splits: being run out
+        # backing up says nothing about how the batter plays leg spin.
+        for w in d.wickets:
+            if not w.player_out_id:
+                continue
+            winn = self._batting_innings(d, w.player_out_id, w.player_out, order,
+                                         next_position, bat_innings)
+            if not w.is_dismissal:
+                if not winn.out:
+                    winn.dismissal = w.kind      # "retired hurt": shown, not out
+                continue
+            winn.out = True
+            winn.dismissal = w.kind
+            winn.dismissed_by = d.bowler if w.bowler_credited else ""
+            winn.dismissed_by_id = d.bowler_id if w.bowler_credited else ""
+            if w.player_out_id != d.batter_id:
+                self.player(w.player_out_id, w.player_out).bat_overall.outs += 1
 
         # --- bowler ------------------------------------------------------
         if d.bowler_id:

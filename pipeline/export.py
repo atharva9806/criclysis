@@ -74,7 +74,8 @@ def _career_milestones(innings: list) -> dict:
             fifties += 1
         if not inn.out:
             not_outs += 1
-        if runs > highest:
+        # A highest score made both out and not out is shown not out (104*).
+        if runs > highest or (runs == highest and not inn.out):
             highest, highest_not_out = runs, not inn.out
     return {
         "fifties": fifties, "hundreds": hundreds,

@@ -179,7 +179,7 @@ class PlayerFormat:
     def add_batting_innings(self, inn: BattingInnings) -> None:
         self.bat_innings.append(inn)
         self.bat_overall.innings += 1
-        if inn.dismissal:
+        if inn.out and inn.dismissal:
             self.dismissals[inn.dismissal] += 1
         if inn.position:
             self.bat_by_position[str(inn.position)].innings += 1
@@ -212,8 +212,8 @@ class PlayerFormat:
         self.bowl_by_innings_no[str(d.innings)].add(*args)
         if d.batter_id:
             self.vs_batter[d.batter_id].add(*args)
-        if wicket and d.wicket_kind:
-            self.wicket_kinds[d.wicket_kind] += 1
+        if wicket and d.credited_wicket:
+            self.wicket_kinds[d.credited_wicket.kind] += 1
 
     def add_bowling_innings(self, inn: BowlingInnings) -> None:
         self.bowl_innings.append(inn)

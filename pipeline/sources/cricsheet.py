@@ -63,6 +63,33 @@ def mirror_urls(fmt: str) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 # Normalised records
 # ---------------------------------------------------------------------------
+# Dismissals that are not credited to the bowler.
+NON_BOWLER_DISMISSALS = {
+    "run out", "retired hurt", "retired out", "retired not out",
+    "obstructing the field", "handled the ball", "timed out",
+}
+
+# Cricsheet records these in ``wickets`` too, but the batter is not out:
+# they neither count as a dismissal nor cost the batting side a wicket.
+NOT_DISMISSALS = {"retired hurt", "retired not out"}
+
+
+@dataclass(slots=True, frozen=True)
+class Wicket:
+    """One entry of a delivery's ``wickets`` list."""
+    kind: str
+    player_out: str
+    player_out_id: str
+
+    @property
+    def is_dismissal(self) -> bool:
+        return self.kind not in NOT_DISMISSALS
+
+    @property
+    def bowler_credited(self) -> bool:
+        return self.kind not in NON_BOWLER_DISMISSALS
+
+
 @dataclass(slots=True)
 class Delivery:
     """One delivery, flattened into the shape every metric module consumes."""
@@ -98,14 +125,14 @@ class Delivery:
     legbyes: int
     is_legal: bool            # counts towards the over
     is_batter_ball: bool      # counts as a ball faced by the batter
-    wicket_kind: str | None   # the first wicket on the ball, if any
-    player_out: str | None
-    player_out_id: str | None
-    team_wickets: int         # wickets the batting side lost on this ball
-    bowler_credited: bool     # dismissal attributed to the bowler
+    # Every wicket on the ball, in Cricsheet's order. Usually none or one,
+    # but a ball can carry two (a catch and a timed out; a run out at each
+    # end of a retirement).
+    wickets: tuple[Wicket, ...]
     phase: str
-    chasing: bool
-    target: int | None
+    chasing: bool             # batting second in a limited-overs match, or
+                              # fourth in a Test
+    target: int | None        # limited overs only: Cricsheet has no Test targets
     score_before: int
     wickets_before: int
 
@@ -121,6 +148,21 @@ class Delivery:
     def is_dot(self) -> bool:
         # A dot for the batter: no run off the bat and no run taken.
         return self.is_batter_ball and self.runs_batter == 0 and self.runs_total == 0
+
+    @property
+    def team_wickets(self) -> int:
+        """Wickets the batting side lost on this ball."""
+        return sum(1 for w in self.wickets if w.is_dismissal)
+
+    @property
+    def credited_wicket(self) -> Wicket | None:
+        """The bowler's wicket on this ball, if any (there is at most one)."""
+        return next((w for w in self.wickets if w.bowler_credited), None)
+
+    def dismissal_of(self, person_id: str) -> Wicket | None:
+        """The wicket that dismissed this person on this ball, if any."""
+        return next((w for w in self.wickets
+                     if w.player_out_id == person_id and w.is_dismissal), None)
 
 
 @dataclass(slots=True)
@@ -140,17 +182,6 @@ class MatchInfo:
     toss_decision: str | None
     players: dict[str, list[str]] = field(default_factory=dict)
     registry: dict[str, str] = field(default_factory=dict)
-
-
-# Dismissals that are not credited to the bowler.
-NON_BOWLER_DISMISSALS = {
-    "run out", "retired hurt", "retired out", "retired not out",
-    "obstructing the field", "handled the ball", "timed out",
-}
-
-
-# Dismissals that do not cost the batting side a wicket.
-NOT_TEAM_WICKETS = {"retired hurt", "retired not out"}
 
 
 def archive_path(fmt: str) -> Path:
@@ -262,13 +293,17 @@ def parse_match(raw: dict, match_id: str, fmt: str,
         return match.registry.get(name) or f"~{name}"
 
     deliveries: list[Delivery] = []
+    innings_seen = 0
     for idx, inn in enumerate(raw.get("innings", [])):
         if inn.get("super_over"):
             continue
+        innings_seen += 1
         batting_team = inn.get("team", "")
         bowling_team = next((t for t in teams if t != batting_team), "")
         target = (inn.get("target") or {}).get("runs")
-        chasing = target is not None
+        # Limited overs: the second innings carries its target. Cricsheet gives
+        # Tests no target, but the fourth innings is the only chase there is.
+        chasing = innings_seen == 4 if fmt == "test" else target is not None
         ball_no = 0
         score = 0
         wickets = 0
@@ -289,14 +324,10 @@ def parse_match(raw: dict, match_id: str, fmt: str,
                 if is_legal:
                     ball_no += 1
 
-                wicket_kind = None
-                player_out = None
-                credited = False
-                for w in d.get("wickets", []) or []:
-                    wicket_kind = w.get("kind")
-                    player_out = w.get("player_out")
-                    credited = wicket_kind not in NON_BOWLER_DISMISSALS
-                    break  # at most one wicket matters for our metrics
+                wickets_here = tuple(
+                    Wicket(kind=w.get("kind", ""), player_out=w.get("player_out", ""),
+                           player_out_id=person_id(w.get("player_out", "")))
+                    for w in d.get("wickets") or [])
 
                 deliveries.append(Delivery(
                     match_id=match_id,
@@ -329,12 +360,7 @@ def parse_match(raw: dict, match_id: str, fmt: str,
                     legbyes=legbyes,
                     is_legal=is_legal,
                     is_batter_ball=is_batter_ball,
-                    wicket_kind=wicket_kind,
-                    player_out=player_out,
-                    player_out_id=person_id(player_out) if player_out else None,
-                    team_wickets=sum(1 for w in d.get("wickets") or []
-                                     if w.get("kind") not in NOT_TEAM_WICKETS),
-                    bowler_credited=credited,
+                    wickets=wickets_here,
                     phase=phase_for(fmt, over),
                     chasing=chasing,
                     target=target,
@@ -342,8 +368,7 @@ def parse_match(raw: dict, match_id: str, fmt: str,
                     wickets_before=wickets,
                 ))
                 score += int(runs.get("total", 0))
-                if wicket_kind:
-                    wickets += 1
+                wickets += sum(1 for w in wickets_here if w.is_dismissal)
 
     return match, deliveries
 

@@ -38,6 +38,8 @@ class Corpus:
     id_names: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
     #: person id -> genders they appear under (one, unless the data is wrong)
     id_genders: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
+    #: person id -> every team they played for (to check metadata countries)
+    id_teams: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
 
     def add(self, fmt: str, match_id: str, raw: dict) -> None:
         if match_id in self.match_format:
@@ -53,15 +55,24 @@ class Corpus:
         gender = info.get("gender", "male")
         # Players only: the registry also lists umpires and referees, who
         # never bat or bowl, so a name shared with an official is no risk.
-        names = {n for squad in (info.get("players") or {}).values() for n in squad}
+        teams = list(info.get("teams", []))
+        played: dict[str, set[str]] = defaultdict(set)     # name -> teams
+        for team, squad in (info.get("players") or {}).items():
+            for name in squad:
+                played[name].add(team)
         for inn in raw.get("innings", []):
+            batting = inn.get("team", "")
+            bowling = next((t for t in teams if t != batting), "")
             for over in inn.get("overs", []):
                 for d in over.get("deliveries", []):
-                    names.update((d.get("batter"), d.get("bowler"), d.get("non_striker")))
-        for name in names:
+                    played[d.get("batter")].add(batting)
+                    played[d.get("non_striker")].add(batting)
+                    played[d.get("bowler")].add(bowling)
+        for name, sides in played.items():
             pid = registry.get(name or "")
             if not pid:
                 continue
+            self.id_teams[pid].update(t for t in sides if t)
             self.name_ids[name].add(pid)
             self.id_names[pid].add(name)
             self.id_genders[pid].add(gender)

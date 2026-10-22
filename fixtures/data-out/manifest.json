@@ -220,7 +220,7 @@
       {
         "id": "playermeta",
         "used": true,
-        "note": "Bowling styles and batting hands from data/player_styles.csv and data/styles.csv; nothing fetched"
+        "note": "Bowling styles and batting hands from data/player_styles.csv and data/styles.csv, joined by Cricsheet id, or by name only where the name is unique, on one row, and the row's country is a team the player played for"
       },
       {
         "id": "fixture",
@@ -230,16 +230,23 @@
     ],
     "enrichment": {
       "players": 5335,
+      "register": false,
       "resolvedById": 0,
-      "resolvedByName": 4489,
-      "withStyle": 3819,
-      "withHand": 4484,
-      "skippedAmbiguous": 83
+      "resolvedByName": 4396,
+      "rejected": 176,
+      "rejectedAmbiguousName": 83,
+      "rejectedDuplicateRows": 1,
+      "rejectedCountryMismatch": 92,
+      "withStyle": 3738,
+      "withHand": 4392
     },
     "dataset": "live",
     "identity": {
       "ambiguousNames": 41,
-      "stylesSkippedAmbiguous": 83
+      "stylesSkippedAmbiguous": 83,
+      "resolvedById": 0,
+      "resolvedByName": 4396,
+      "rejected": 176
     }
   }
 }

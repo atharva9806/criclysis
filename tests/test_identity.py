@@ -145,7 +145,7 @@ class StyleResolutionTests(unittest.TestCase):
                                        same_name_pair())
         self.assertNotIn("aaaa0001", resolved)
         self.assertNotIn("bbbb0002", resolved)
-        self.assertEqual(stats["skippedAmbiguous"], 2)
+        self.assertEqual(stats["rejectedAmbiguousName"], 2)
 
     def test_a_row_pinned_to_an_id_applies_to_that_person_only(self):
         resolved, stats = self.resolve("A Mishra,bbbb0002,ob,right,Ghana,player-meta\n"
@@ -154,20 +154,20 @@ class StyleResolutionTests(unittest.TestCase):
         self.assertEqual(resolved["aaaa0001"]["bowlingType"], "lb")
         self.assertEqual(resolved["bbbb0002"]["bowlingType"], "ob")
         self.assertEqual(stats["resolvedById"], 2)
-        self.assertEqual(stats["skippedAmbiguous"], 0)
+        self.assertEqual(stats["rejected"], 0)
 
     def test_womens_players_are_resolved_too(self):
         """Styles come from a corpus of both genders, so a women's bowler who
         never plays a men's match still gets hers."""
         women = relabel(simple_t20(), players={"A Zampa": ("S Ecclestone", "eeee0005")},
-                        gender="female")
+                        teams={"Australia": "England"}, gender="female")
         resolved, _stats = self.resolve("S Ecclestone,,sla,right,England,player-meta\n",
                                         [("w1", women)])
         self.assertEqual(resolved["eeee0005"]["bowlingType"], "sla")
 
     def test_curated_row_wins_over_generated(self):
-        enrich.CURATED.write_text("name,bowling_type,batting_hand,source\n"
-                                  "MA Starc,lfm,left,curated\n")
+        enrich.CURATED.write_text("name,bowling_type,batting_hand,country,source\n"
+                                  "MA Starc,lfm,left,Australia,curated\n")
         resolved, _ = self.resolve("MA Starc,,lf,left,Australia,player-meta\n",
                                    [("1", simple_t20())])
         self.assertEqual(resolved["p-starc"]["bowlingType"], "lfm")

@@ -9,10 +9,19 @@ the strategy planner has nothing to reason with.
 
 Where the data comes from
 -------------------------
-A published player-metadata table keyed on the Cricsheet person id, so it joins
-to ball-by-ball data exactly. The attributes ultimately originate from public
-player profiles; see docs/DATA_SOURCES.md for the provenance chain and the
-licensing caveat, which is real and worth reading before redistributing.
+A published player-metadata table. The attributes ultimately originate from
+public player profiles; see docs/DATA_SOURCES.md for the provenance chain and
+the licensing caveat, which is real and worth reading before redistributing.
+
+How it joins to the ball-by-ball data
+-------------------------------------
+:func:`convert` writes the table's ``cricsheet_id`` column when it has one, and
+a row with an id joins to that person exactly. The table the current
+``data/player_styles.csv`` was generated from had no such column, so its rows
+carry only names and ESPNcricinfo ids. The build therefore joins them by id
+through Cricsheet's people register (ESPNcricinfo id -> Cricsheet id) when it
+has been downloaded, and otherwise by name under strict rules - see
+``pipeline/enrich.py``. A name alone is not an identity.
 
 This module only converts that table into the project's own styles CSV. Nothing
 here fetches: the input is a local file, so a build stays reproducible and

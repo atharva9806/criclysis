@@ -38,6 +38,14 @@ def setup_logging(verbose: bool) -> None:
 # ---------------------------------------------------------------------------
 def cmd_fetch(args) -> int:
     failures = 0
+    if not args.no_register:
+        # Best effort: the build joins player metadata by id through it when
+        # present, and falls back to strict name matching when not.
+        try:
+            path = cricsheet.download_register(use_cache=not args.refresh)
+            log.info("register %s (%.1f MB)", path, path.stat().st_size / 1e6)
+        except (net.Blocked, net.FetchError) as exc:
+            log.warning("could not fetch the people register (optional): %s", exc)
     for fmt in args.formats:
         try:
             path = cricsheet.download_archive(
@@ -82,7 +90,7 @@ def cmd_replays(args) -> int:
     from .replay import export_replays, replay_items
     try:
         scanned = corpus.scan()
-        styles, hands = split_maps(resolve(scanned)[0])
+        styles, hands = split_maps(resolve(scanned, register=cricsheet.load_register())[0])
         index = export_replays(
             replay_items(args.formats, tuple(args.genders), all_matches=args.all),
             out_dir=Path(args.out), venue_key=scanned.venues.key, styles=styles, hands=hands)
@@ -158,6 +166,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="ignore the cache and re-download")
     p_fetch.add_argument("--no-mirror", action="store_true", dest="no_mirror",
                          help="only use cricsheet.org; do not fall back to a mirror")
+    p_fetch.add_argument("--no-register", action="store_true", dest="no_register",
+                         help="do not fetch Cricsheet's people register")
     p_fetch.set_defaults(func=cmd_fetch)
 
     p_build = sub.add_parser("build", help="aggregate, analyse and export")
@@ -191,6 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_build_options(p_all)
     p_all.add_argument("--refresh", action="store_true")
     p_all.add_argument("--no-mirror", action="store_true", dest="no_mirror")
+    p_all.add_argument("--no-register", action="store_true", dest="no_register")
     p_all.set_defaults(func=cmd_all)
     return parser
 

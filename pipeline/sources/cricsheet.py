@@ -12,6 +12,7 @@ generated ``manifest.json`` carries that credit and the Method page renders it.
 """
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import zipfile
@@ -25,6 +26,9 @@ from .. import net
 log = logging.getLogger(__name__)
 
 BASE = SOURCES["cricsheet"]["base"]
+#: Cricsheet's people register: person id -> ids on other sites. Only on
+#: cricsheet.org (no mirror carries it), so a build works without it.
+REGISTER_URL = f"{BASE}/register/people.csv"
 
 # Cricsheet filters automated traffic, which means a download can fail from a
 # CI runner, a cloud VM or a corporate egress range while working fine from a
@@ -186,6 +190,35 @@ class MatchInfo:
 
 def archive_path(fmt: str) -> Path:
     return RAW_DIR / "cricsheet" / ALL_FORMATS[fmt]["archive"]
+
+
+def register_path() -> Path:
+    return RAW_DIR / "cricsheet" / "people.csv"
+
+
+def download_register(*, use_cache: bool = True) -> Path:
+    """Fetch Cricsheet's people register (cricsheet.org only)."""
+    return net.download(REGISTER_URL, register_path(), use_cache=use_cache)
+
+
+def load_register(path: Path | None = None) -> dict[str, str]:
+    """ESPNcricinfo id -> Cricsheet person id, from the people register.
+
+    Empty when the register has not been downloaded. An ESPNcricinfo id that
+    the register gives to two people is left out rather than guessed.
+    """
+    path = path or register_path()
+    if not path.exists():
+        return {}
+    seen: dict[str, set[str]] = {}
+    with path.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            ident = (row.get("identifier") or "").strip()
+            for column in ("key_cricinfo", "key_cricinfo_2"):
+                key = (row.get(column) or "").strip()
+                if ident and key:
+                    seen.setdefault(key, set()).add(ident)
+    return {key: next(iter(ids)) for key, ids in seen.items() if len(ids) == 1}
 
 
 def download_archive(fmt: str, *, use_cache: bool = True,

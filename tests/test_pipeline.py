@@ -308,6 +308,7 @@ class TestCuratedStyles(unittest.TestCase):
         corpus = Corpus()
         corpus.name_ids[name].add("0000beef")
         corpus.id_names["0000beef"].add(name)
+        corpus.id_teams["0000beef"].add(self.records[name]["country"])
         original = enrich.GENERATED
         try:
             enrich.GENERATED = generated

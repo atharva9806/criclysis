@@ -28,7 +28,7 @@ from .export import export_players, write_json
 from .fingerprint import fingerprint, generated_at
 from .matches import build_match_row, sort_key
 from .replay import featured_ranks
-from .sources.cricsheet import archive_path, iter_raw, parse_match
+from .sources.cricsheet import archive_path, iter_raw, load_register, parse_match
 from .teams import TeamBook
 from .venues import VenueBook
 
@@ -173,8 +173,13 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
                   archives: dict[str, Path] | None = None, styles_file: Path | None = None,
                   limit_matches: int | None = None, only_ids: set[str] | None = None,
                   corpus=None, extra_sources: list[dict] | None = None,
-                  sha: str | None = None, pretty: bool = False) -> dict:
-    """Build every players/matches/teams/venues file into ``out_dir``."""
+                  sha: str | None = None, pretty: bool = False,
+                  register: dict[str, str] | None = None) -> dict:
+    """Build every players/matches/teams/venues file into ``out_dir``.
+
+    ``register`` maps ESPNcricinfo ids to Cricsheet ids; by default it is
+    Cricsheet's people register if `fetch` downloaded it, else empty.
+    """
     started = time.time()
     paths = archive_paths(formats, archives)
     for fmt, path in paths.items():
@@ -189,7 +194,8 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
         corpus = corpus_mod.scan(formats=tuple(scan_paths), archives=scan_paths)
 
     # Metadata by person id, over the whole corpus (both genders).
-    metadata, stats = resolve(corpus, extra_file=styles_file)
+    register = load_register() if register is None else register
+    metadata, stats = resolve(corpus, extra_file=styles_file, register=register)
     styles, hands = split_maps(metadata)
     log.info("styles: %s", stats)
 
@@ -211,13 +217,19 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
              "note": "Ball-by-ball data for every split on the site (CC BY 4.0)"},
             {"id": "playermeta", "used": bool(styles),
              "note": "Bowling styles and batting hands from data/player_styles.csv "
-                     "and data/styles.csv; nothing fetched"},
+                     "and data/styles.csv, joined by Cricsheet id"
+                     + (" through Cricsheet's people register" if register else "")
+                     + ", or by name only where the name is unique, on one row, "
+                       "and the row's country is a team the player played for"},
             *(extra_sources or []),
         ],
         "enrichment": stats,
         "dataset": "live",
         "identity": {"ambiguousNames": len(corpus.ambiguous_names()),
-                     "stylesSkippedAmbiguous": stats["skippedAmbiguous"]},
+                     "stylesSkippedAmbiguous": stats["rejectedAmbiguousName"],
+                     "resolvedById": stats["resolvedById"],
+                     "resolvedByName": stats["resolvedByName"],
+                     "rejected": stats["rejected"]},
     }
     fp = fingerprint({p.name: p for p in paths.values()})
     generated = generated_at(list(paths.values()))

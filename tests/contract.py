@@ -205,7 +205,9 @@ MANIFEST = Obj({
         "sources": Arr(Obj({"id": Str(), "used": Bool(), "note": Str()})),
         "enrichment": Map(Any()),
         "dataset": Lit("live", "demo"),
-        "identity": Obj({"ambiguousNames": Int(), "stylesSkippedAmbiguous": Int()}),
+        "identity": Obj({"ambiguousNames": Int(), "stylesSkippedAmbiguous": Int(),
+                         # Added in the metadata-join fix (audit item 3).
+                         "resolvedById?": Int(), "resolvedByName?": Int(), "rejected?": Int()}),
     }),
 })
 FINGERPRINT = Obj({

@@ -26,9 +26,9 @@ def women_styles_csv(path: Path) -> None:
     """A styles file for the women only, as a licensed feed might supply."""
     from pipeline.simulate import make_roster
     import random
-    rows = ["name,bowling_type,batting_hand,source"]
+    rows = ["name,bowling_type,batting_hand,country,source"]
     for p in make_roster(random.Random(2)):
-        rows.append(f"{p.name} (W),{p.bowling_type},{p.batting_hand},test")
+        rows.append(f"{p.name} (W),{p.bowling_type},{p.batting_hand},{p.team},test")
     path.write_text("\n".join(rows) + "\n")
 
 

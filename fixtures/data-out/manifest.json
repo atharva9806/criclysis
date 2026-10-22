@@ -69,14 +69,14 @@
       {
         "key": "old_ball",
         "from": 20,
-        "to": 60,
-        "label": "Old ball (21-60)"
+        "to": 80,
+        "label": "Old ball (21-80)"
       },
       {
         "key": "second_new",
-        "from": 60,
+        "from": 80,
         "to": 1000,
-        "label": "Second new ball (80+)"
+        "label": "Second new ball (81+)"
       }
     ],
     "odi": [

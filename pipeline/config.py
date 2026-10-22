@@ -84,10 +84,12 @@ PHASES = {
         ("middle", 10, 40, "Middle (11-40)"),
         ("death", 40, 50, "Death (41-50)"),
     ],
+    # The second new ball is due after 80 overs, so it is in use from the
+    # 81st over (index 80).
     "test": [
         ("new_ball", 0, 20, "New ball (1-20)"),
-        ("old_ball", 20, 60, "Old ball (21-60)"),
-        ("second_new", 60, 1000, "Second new ball (80+)"),
+        ("old_ball", 20, 80, "Old ball (21-80)"),
+        ("second_new", 80, 1000, "Second new ball (81+)"),
     ],
 }
 PHASES["ipl"] = PHASES["bbl"] = PHASES["psl"] = PHASES["t20i"]

@@ -188,3 +188,31 @@ class TestClaimText(unittest.TestCase):
         self.assertIn("45.0", text)     # the player's own baseline
         self.assertIn("-51%", text)     # the change that was ranked
         self.assertIn("-5%", text)      # the cohort's median change
+
+
+class TestPhaseDefinitions(unittest.TestCase):
+    """Every phase label states exactly the overs its boundaries cover."""
+
+    def test_labels_match_boundaries(self):
+        import re
+        from pipeline.config import PHASES
+        for fmt, phases in PHASES.items():
+            previous_end = 0
+            for key, start, end, label in phases:
+                self.assertEqual(start, previous_end, f"{fmt} {key} leaves a gap")
+                previous_end = end
+                closed = re.search(r"\((\d+)-(\d+)\)", label)
+                open_ended = re.search(r"\((\d+)\+\)", label)
+                if closed:
+                    # Over indexes are 0-based: overs start+1 .. end.
+                    self.assertEqual((int(closed.group(1)), int(closed.group(2))),
+                                     (start + 1, end), f"{fmt} {label}")
+                else:
+                    self.assertIsNotNone(open_ended, f"{fmt} {label}")
+                    self.assertEqual(int(open_ended.group(1)), start + 1, f"{fmt} {label}")
+                    self.assertGreaterEqual(end, 1000)
+
+    def test_second_new_ball_after_80_overs(self):
+        from pipeline.sources.cricsheet import phase_for
+        self.assertEqual(phase_for("test", 79), "old_ball")      # the 80th over
+        self.assertEqual(phase_for("test", 80), "second_new")    # the 81st

@@ -35,6 +35,18 @@ class FeaturedRuleTests(unittest.TestCase):
                          [curated[0], curated[1], "9005", "9002", "9001"])
         self.assertEqual(ranks[curated[0]], 1)
 
+    def test_qualifier_and_regional_finals_are_not_featured(self):
+        matches = [
+            ("9101", "2024-08-28", final("ICC Men's T20 World Cup Sub Regional Europe Qualifier")),
+            ("9102", "2025-10-04", final("ICC Men's T20 World Cup Africa Region Final")),
+            ("9103", "2023-07-09", final("ICC Cricket World Cup Qualifier")),
+            ("9104", "2025-07-26", final("Asia Pacific Cricket Champions Trophy")),
+            ("9105", "2026-03-08", final("ICC Men's T20 World Cup")),
+            ("9106", "2025-10-05", final("ICC Women's Cricket World Cup")),
+        ]
+        ranks = featured_ranks(matches)
+        self.assertEqual(sorted(ranks, key=ranks.get), ["9105", "9106"])
+
     def test_nothing_featured(self):
         self.assertEqual(featured_ranks([("1", "2020-01-01", {})]), {})
 
@@ -124,3 +136,16 @@ class ReplayItemsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReplayStatesTests(unittest.TestCase):
+    def test_penalty_runs_before_the_innings_are_on_the_board(self):
+        from pipeline.replay import replay_states
+        replay = {"innings": [{"target": None, "penaltyRuns": {"pre": 5, "post": 0},
+                               "balls": [[0, 0, 1, 2, 1, 0, None, None, None],
+                                         [0, 0, 1, 2, 4, 0, None, None, None]]},
+                              {"target": 16, "balls": [[0, 2, 3, 0, 6, 0, None, None, None]]}]}
+        states = list(replay_states(replay, 120))
+        self.assertEqual([s[3] for s in states], [6, 10, 6])
+        # Replays written before penaltyRuns existed still work.
+        self.assertEqual(states[2][1:4], (119, 0, 6))

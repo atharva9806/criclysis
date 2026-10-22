@@ -57,6 +57,9 @@ FEATURED = [
 #: After the curated list, every final of these events is featured too, newest
 #: first, so new finals (men's or women's) appear without a code change.
 FEATURED_EVENTS = re.compile(r"World Cup|World T20|T20 World Cup|Champions Trophy")
+#: ...except the finals of qualifying and regional events, and the Asia
+#: Pacific Cricket Champions Trophy, which the names above also match.
+NOT_FEATURED_EVENTS = re.compile(r"Qualifier|Region|Asia Pacific")
 
 EXTRA_KEYS = ("wides", "noballs", "byes", "legbyes", "penalty")
 
@@ -166,7 +169,9 @@ INDEX_FIELDS = ("id", "format", "formatKey", "gender", "title", "event", "stage"
 
 def is_featured_final(event: dict | None) -> bool:
     event = event or {}
-    return event.get("stage") == "Final" and bool(FEATURED_EVENTS.search(event.get("name") or ""))
+    name = event.get("name") or ""
+    return (event.get("stage") == "Final" and bool(FEATURED_EVENTS.search(name))
+            and not NOT_FEATURED_EVENTS.search(name))
 
 
 def featured_ranks(matches) -> dict[str, int]:
@@ -238,9 +243,14 @@ def replay_items(formats, genders, *, all_matches: bool = False, archives=None):
 
 def replay_states(replay: dict, max_balls: int):
     """Yield (innings_no, balls_left, wickets, runs, target, ball_index) after
-    every legal delivery, mirroring what a live feed would report."""
+    every delivery, mirroring what a live feed would report.
+
+    Penalty runs awarded before the innings (``penaltyRuns.pre``) are on the
+    board from its first ball, as the replay engine counts them.
+    """
     for n, inn in enumerate(replay["innings"][:2], start=1):
-        legal = wickets = runs = 0
+        legal = wickets = 0
+        runs = (inn.get("penaltyRuns") or {}).get("pre", 0)
         target = inn.get("target")
         for i, b in enumerate(inn["balls"]):
             runs += b[4] + b[5]

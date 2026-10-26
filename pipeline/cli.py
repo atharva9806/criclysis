@@ -1,31 +1,27 @@
 """Command line entry point.
 
-    python -m pipeline fetch    --formats test odi t20i
-    python -m pipeline enrich   --source espncricinfo
-    python -m pipeline build    --formats test odi t20i
-    python -m pipeline rankings
-    python -m pipeline all
-    python -m pipeline seed     # generate the bundled demo dataset
-    python -m pipeline winprob  # fit and validate the win-probability model
-    python -m pipeline replays  # export featured matches for replay mode
+    python -m pipeline fetch     --formats test odi t20i
+    python -m pipeline build     --genders male female
+    python -m pipeline winprob   # fit and validate the win-probability models
+    python -m pipeline replays   --all --genders male female
+    python -m pipeline fingerprint --out data/out/fingerprint.json
+    python -m pipeline fixtures  --out fixtures/data-out
+    python -m pipeline all       # fetch then build
 
 ``build`` is the one that matters: it streams the downloaded archives, fills the
-aggregates, runs the strengths/weaknesses analysis and writes web/data.
+aggregates, runs the strengths/weaknesses analysis and writes data/out in the
+shape docs/ARCHITECTURE.md §1 describes. Nothing here scrapes or calls an API:
+the only network access is ``fetch``, which downloads Cricsheet's archives.
 """
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
-import time
 from pathlib import Path
 
 from . import net
-from .aggregate import Aggregator
-from .config import ALL_FORMATS, FORMATS, WEB_DATA_DIR
-from .enrich import resolve, split_maps
-from .export import export_all
+from .config import ALL_FORMATS, FORMATS, GENDERS, WEB_DATA_DIR
 from .sources import cricsheet
 
 log = logging.getLogger("pipeline")
@@ -42,6 +38,14 @@ def setup_logging(verbose: bool) -> None:
 # ---------------------------------------------------------------------------
 def cmd_fetch(args) -> int:
     failures = 0
+    if not args.no_register:
+        # Best effort: the build joins player metadata by id through it when
+        # present, and falls back to strict name matching when not.
+        try:
+            path = cricsheet.download_register(use_cache=not args.refresh)
+            log.info("register %s (%.1f MB)", path, path.stat().st_size / 1e6)
+        except (net.Blocked, net.FetchError) as exc:
+            log.warning("could not fetch the people register (optional): %s", exc)
     for fmt in args.formats:
         try:
             path = cricsheet.download_archive(
@@ -58,156 +62,22 @@ def cmd_fetch(args) -> int:
     return 1 if failures else 0
 
 
-def cmd_rankings(args) -> int:
-    from .sources import icc
-    try:
-        rows = icc.fetch_all(use_cache=not args.refresh)
-    except net.Blocked as exc:
-        log.error("blocked by robots.txt: %s", exc)
-        return 1
-    if not rows:
-        log.warning("no rankings parsed - the page layout may have changed")
-        return 1
-    out = WEB_DATA_DIR / "rankings.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"rankings": [r.to_dict() for r in rows]}, indent=1))
-    log.info("wrote %d ranking rows to %s", len(rows), out)
-    return 0
-
-
-def _collect_names(fmt: str, limit: int | None) -> tuple[set[str], dict[str, str]]:
-    """First pass: who is in this archive, and what are their Cricsheet ids."""
-    names: set[str] = set()
-    registry: dict[str, str] = {}
-    for match, deliveries in cricsheet.iter_matches(fmt, limit=limit):
-        registry.update(match.registry)
-        for squad in match.players.values():
-            names.update(squad)
-        for d in deliveries:
-            names.add(d.batter)
-            names.add(d.bowler)
-    names.discard("")
-    return names, registry
-
-
-def cmd_enrich(args) -> int:
-    names: set[str] = set()
-    registry: dict[str, str] = {}
-    for fmt in args.formats:
-        try:
-            fmt_names, fmt_registry = _collect_names(fmt, args.limit_matches)
-        except FileNotFoundError as exc:
-            log.error("%s", exc)
-            return 1
-        names |= fmt_names
-        registry.update(fmt_registry)
-
-    log.info("%d distinct players across %s", len(names), ", ".join(args.formats))
-    _records, stats = resolve(
-        names, registry,
-        extra_file=Path(args.styles_file) if args.styles_file else None,
-        use_cricinfo=args.source == "espncricinfo",
-        limit=args.limit,
-    )
-    log.info("enrichment: %s", json.dumps(stats))
-    if stats["blocked"]:
-        log.error("ESPNcricinfo robots.txt disallowed the profile pages for this "
-                  "user-agent. Nothing further was requested. Supply styles with "
-                  "--styles-file instead, or add them to data/styles.csv.")
-        return 2
-    return 0
-
-
 def cmd_build(args) -> int:
-    started = time.time()
-    aggregators: dict[str, Aggregator] = {}
-    metadata: dict[str, dict] = {}
-    provenance: dict = {"sources": [], "enrichment": {}}
-
-    all_names: set[str] = set()
-    all_registry: dict[str, str] = {}
-    for fmt in args.formats:
-        try:
-            names, registry = _collect_names(fmt, args.limit_matches)
-        except FileNotFoundError as exc:
-            log.error("%s", exc)
-            return 1
-        all_names |= names
-        all_registry.update(registry)
-
-    records, stats = resolve(
-        all_names, all_registry,
-        extra_file=Path(args.styles_file) if args.styles_file else None,
-        use_cricinfo=args.enrich == "espncricinfo",
-        limit=args.limit,
-    )
-    styles, hands = split_maps(records)
-    provenance["enrichment"] = stats
-    log.info("styles resolved for %d/%d players", len(styles), len(all_names))
-    if stats["unresolved"]:
-        log.warning("%d players have no bowling style; their deliveries will not "
-                    "appear in bowling-type splits", stats["unresolved"])
-
-    for fmt in args.formats:
-        log.info("building %s", fmt)
-        agg = Aggregator(fmt, styles=styles, hands=hands)
-        count = 0
-        for match, deliveries in cricsheet.iter_matches(
-                fmt, limit=args.limit_matches, gender=args.gender):
-            agg.registry.update(match.registry)
-            agg.add_match(match, deliveries)
-            count += 1
-            if count % 500 == 0:
-                log.info("  %s: %d matches, %d deliveries", fmt, count, agg.deliveries)
-        agg.finalise()
-        aggregators[fmt] = agg
-        log.info("  %s: %s", fmt, json.dumps(agg.summary()))
-
-    for name, record in records.items():
-        metadata[name] = {
-            "bowlingType": record.get("bowlingType", ""),
-            "battingHand": record.get("battingHand", ""),
-            "role": record.get("role", ""),
-            "country": record.get("country", ""),
-            "cricinfoId": record.get("cricinfoId", ""),
-            "fullName": record.get("fullName", name),
-            "born": record.get("born", ""),
-        }
-
-    provenance["sources"] = [
-        {"id": "cricsheet", "used": True,
-         "note": "Ball-by-ball data for every split on the site (CC BY 4.0)"},
-        {"id": "espncricinfo", "used": args.enrich == "espncricinfo",
-         "note": "Player styles and roles" if args.enrich == "espncricinfo"
-                 else "Not contacted in this build"},
-    ]
-    provenance["dataset"] = "live"
-
-    rankings = None
-    rankings_file = WEB_DATA_DIR / "rankings.json"
-    if rankings_file.exists():
-        try:
-            rankings = json.loads(rankings_file.read_text()).get("rankings")
-        except json.JSONDecodeError:
-            pass
-
-    summary = export_all(aggregators, metadata, Path(args.out),
-                         rankings=rankings, provenance=provenance,
-                         pretty=args.pretty)
-    log.info("wrote %d players to %s in %.1fs",
-             summary["players"], args.out, time.time() - started)
+    from .build import build_dataset
+    try:
+        build_dataset(Path(args.out), formats=tuple(args.formats), genders=tuple(args.genders),
+                      styles_file=Path(args.styles_file) if args.styles_file else None,
+                      limit_matches=args.limit_matches, pretty=args.pretty)
+    except FileNotFoundError as exc:
+        log.error("%s", exc)
+        return 1
     return 0
-
-
-def cmd_seed(args) -> int:
-    from .seed import build_seed
-    return build_seed(Path(args.out), pretty=args.pretty)
 
 
 def cmd_winprob(args) -> int:
     from .winprob import build
     try:
-        build(tuple(args.formats), Path(args.out))
+        build(tuple(args.formats), Path(args.out), genders=tuple(args.genders))
     except FileNotFoundError as exc:
         log.error("%s", exc)
         return 1
@@ -215,9 +85,43 @@ def cmd_winprob(args) -> int:
 
 
 def cmd_replays(args) -> int:
-    from .replay import export_replays
-    index = export_replays(out_dir=Path(args.out))
+    from . import corpus
+    from .enrich import resolve, split_maps
+    from .replay import export_replays, replay_items
+    try:
+        scanned = corpus.scan()
+        styles, hands = split_maps(resolve(scanned, register=cricsheet.load_register())[0])
+        index = export_replays(
+            replay_items(args.formats, tuple(args.genders), all_matches=args.all),
+            out_dir=Path(args.out), venue_key=scanned.venues.key, styles=styles, hands=hands)
+    except FileNotFoundError as exc:
+        log.error("%s", exc)
+        return 1
     return 0 if index else 1
+
+
+def cmd_fingerprint(args) -> int:
+    from .export import write_json
+    from .fingerprint import fingerprint
+    paths = {cricsheet.archive_path(fmt).name: cricsheet.archive_path(fmt) for fmt in args.formats}
+    missing = [str(p) for p in paths.values() if not p.exists()]
+    if missing:
+        log.error("missing archives: %s - run `python -m pipeline fetch` first", ", ".join(missing))
+        return 1
+    payload = fingerprint(paths)
+    write_json(Path(args.out), payload, pretty=True)
+    log.info("%s -> %s", payload["combined"], args.out)
+    return 0
+
+
+def cmd_fixtures(args) -> int:
+    from .fixtures import build_fixtures
+    try:
+        build_fixtures(Path(args.out))
+    except FileNotFoundError as exc:
+        log.error("%s", exc)
+        return 1
+    return 0
 
 
 def cmd_all(args) -> int:
@@ -236,10 +140,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    def add_formats(p, default=tuple(FORMATS)):
-        p.add_argument("--formats", nargs="+", default=list(default),
-                       choices=list(ALL_FORMATS),
-                       help="formats to process (default: the three internationals)")
+    def add_formats(p, default=tuple(FORMATS), choices=tuple(ALL_FORMATS)):
+        p.add_argument("--formats", nargs="+", default=list(default), choices=list(choices),
+                       help="formats to process (default: %(default)s)")
+
+    def add_genders(p):
+        p.add_argument("--genders", nargs="+", default=list(GENDERS), choices=list(GENDERS),
+                       help="genders to process (default: %(default)s)")
+        # Kept for old scripts: --gender any is both genders.
+        p.add_argument("--gender", choices=[*GENDERS, "any"], help=argparse.SUPPRESS)
+
+    def add_build_options(p):
+        add_formats(p, choices=tuple(FORMATS))
+        add_genders(p)
+        p.add_argument("--out", default=str(WEB_DATA_DIR))
+        p.add_argument("--styles-file", help="extra styles CSV to merge in")
+        p.add_argument("--limit-matches", type=int, dest="limit_matches",
+                       help="only process the first N matches per format (a quick trial run)")
+        p.add_argument("--pretty", action="store_true",
+                       help="indent the JSON (much larger; useful for debugging)")
 
     p_fetch = sub.add_parser("fetch", help="download Cricsheet archives")
     add_formats(p_fetch)
@@ -247,68 +166,58 @@ def build_parser() -> argparse.ArgumentParser:
                          help="ignore the cache and re-download")
     p_fetch.add_argument("--no-mirror", action="store_true", dest="no_mirror",
                          help="only use cricsheet.org; do not fall back to a mirror")
+    p_fetch.add_argument("--no-register", action="store_true", dest="no_register",
+                         help="do not fetch Cricsheet's people register")
     p_fetch.set_defaults(func=cmd_fetch)
 
-    p_enrich = sub.add_parser("enrich", help="resolve bowling styles")
-    add_formats(p_enrich)
-    p_enrich.add_argument("--source", choices=["none", "espncricinfo"], default="none",
-                          help="opt in to fetching profiles from ESPNcricinfo")
-    p_enrich.add_argument("--styles-file", help="extra styles CSV to merge in")
-    p_enrich.add_argument("--limit", type=int, help="cap the number of profile requests")
-    p_enrich.add_argument("--limit-matches", type=int, dest="limit_matches")
-    p_enrich.set_defaults(func=cmd_enrich)
-
-    p_rank = sub.add_parser("rankings", help="fetch ICC rankings")
-    p_rank.add_argument("--refresh", action="store_true")
-    p_rank.set_defaults(func=cmd_rankings)
-
     p_build = sub.add_parser("build", help="aggregate, analyse and export")
-    add_formats(p_build)
-    p_build.add_argument("--out", default=str(WEB_DATA_DIR))
-    p_build.add_argument("--enrich", choices=["none", "espncricinfo"], default="none")
-    p_build.add_argument("--styles-file")
-    p_build.add_argument("--limit", type=int)
-    p_build.add_argument("--limit-matches", type=int, dest="limit_matches",
-                         help="only process the first N matches (for a quick trial run)")
-    p_build.add_argument("--gender", default="male", choices=["male", "female", "any"])
-    p_build.add_argument("--pretty", action="store_true",
-                         help="indent the JSON (much larger; useful for debugging)")
+    add_build_options(p_build)
     p_build.set_defaults(func=cmd_build)
 
-    p_seed = sub.add_parser("seed", help="write the bundled demo dataset")
-    p_seed.add_argument("--out", default=str(WEB_DATA_DIR))
-    p_seed.add_argument("--pretty", action="store_true")
-    p_seed.set_defaults(func=cmd_seed)
-
-    p_wp = sub.add_parser("winprob", help="fit and validate the win-probability model")
+    p_wp = sub.add_parser("winprob", help="fit and validate the win-probability models")
     p_wp.add_argument("--formats", nargs="+", default=["odi", "t20i"], choices=["odi", "t20i"])
+    add_genders(p_wp)
     p_wp.add_argument("--out", default=str(WEB_DATA_DIR))
     p_wp.set_defaults(func=cmd_winprob)
 
-    p_rp = sub.add_parser("replays", help="export featured matches for replay mode")
+    p_rp = sub.add_parser("replays", help="export matches for replay mode")
+    p_rp.add_argument("--all", action="store_true",
+                      help="every match, not only the featured ones")
+    add_formats(p_rp, choices=tuple(FORMATS))
+    add_genders(p_rp)
     p_rp.add_argument("--out", default=str(WEB_DATA_DIR))
     p_rp.set_defaults(func=cmd_replays)
 
+    p_fp = sub.add_parser("fingerprint", help="fingerprint the downloaded archives")
+    add_formats(p_fp, choices=tuple(FORMATS))
+    p_fp.add_argument("--out", default=str(WEB_DATA_DIR / "fingerprint.json"))
+    p_fp.set_defaults(func=cmd_fingerprint)
+
+    p_fx = sub.add_parser("fixtures", help="write the small deterministic fixture dataset")
+    p_fx.add_argument("--out", default="fixtures/data-out")
+    p_fx.set_defaults(func=cmd_fixtures)
+
     p_all = sub.add_parser("all", help="fetch then build")
-    add_formats(p_all)
-    p_all.add_argument("--out", default=str(WEB_DATA_DIR))
+    add_build_options(p_all)
     p_all.add_argument("--refresh", action="store_true")
     p_all.add_argument("--no-mirror", action="store_true", dest="no_mirror")
-    p_all.add_argument("--enrich", choices=["none", "espncricinfo"], default="none")
-    p_all.add_argument("--styles-file")
-    p_all.add_argument("--limit", type=int)
-    p_all.add_argument("--limit-matches", type=int, dest="limit_matches")
-    p_all.add_argument("--gender", default="male", choices=["male", "female", "any"])
-    p_all.add_argument("--pretty", action="store_true")
+    p_all.add_argument("--no-register", action="store_true", dest="no_register")
     p_all.set_defaults(func=cmd_all)
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = build_parser().parse_args(argv)
+    # The old single --gender option maps onto --genders ("any" is both).
+    gender = getattr(args, "gender", None)
+    if gender:
+        args.genders = list(GENDERS) if gender == "any" else [gender]
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     setup_logging(args.verbose)
-    if getattr(args, "gender", None) == "any":
-        args.gender = None
     return args.func(args)
 
 

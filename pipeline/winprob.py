@@ -29,14 +29,15 @@ from __future__ import annotations
 import json
 import logging
 import math
-import zipfile
 from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .config import FORMATS
-from .sources.cricsheet import archive_path
+from .config import FORMATS, GENDERS, SCHEMA_VERSION, format_key
+from .matches import first_innings_of
+from .sources.cricsheet import iter_raw
+from .venues import canonical_venue
 
 log = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class MatchTrace:
 
     match_id: str
     date: str
-    venue: str
+    venue: str                  # VenueKey
     teams: list[str]
     batting_first: str
     winner: str | None          # None for a tie
@@ -97,6 +98,7 @@ class MatchTrace:
     # (balls_left, wickets_lost, runs) before each legal delivery
     first: list[tuple[int, int, int]] = field(default_factory=list)
     second: list[tuple[int, int, int]] = field(default_factory=list)
+    gender: str = "male"
 
     @property
     def tie(self) -> bool:
@@ -130,18 +132,21 @@ def _walk_innings(innings: dict, max_balls: int) -> tuple[list[tuple[int, int, i
     return states, runs, wickets, legal
 
 
-def trace_match(raw: dict, match_id: str, fmt: str) -> MatchTrace | None:
+def trace_match(raw: dict, match_id: str, fmt: str, gender: str | None = "male",
+                venue_key: str | None = None) -> MatchTrace | None:
     """Reduce a Cricsheet match to ball states, or None if it can't be used.
 
-    Matches are skipped when the scheduled overs differ from the format's
-    standard, when a rain rule (DLS) decided the result, when there was no
-    result, or when either innings is missing.
+    Matches are skipped when they are not of ``gender`` (None accepts both),
+    when the scheduled overs differ from the format's standard, when a rain
+    rule (DLS) decided the result, when there was no result, or when either
+    innings is missing. ``venue_key`` is the ground's VenueKey.
     """
     spec = FORMATS[fmt]
     max_balls = spec["balls_per_innings"]
     overs = max_balls // 6
     info = raw.get("info", {})
-    if info.get("gender", "male") != "male":
+    match_gender = info.get("gender", "male")
+    if gender is not None and match_gender != gender:
         return None
     if info.get("overs") not in (None, overs):
         return None
@@ -167,7 +172,7 @@ def trace_match(raw: dict, match_id: str, fmt: str) -> MatchTrace | None:
     return MatchTrace(
         match_id=match_id,
         date=(info.get("dates") or [""])[0],
-        venue=info.get("venue", ""),
+        venue=venue_key if venue_key is not None else canonical_venue(info.get("venue", "")),
         teams=list(info.get("teams", [])),
         batting_first=innings[0].get("team", ""),
         winner=winner,
@@ -176,26 +181,22 @@ def trace_match(raw: dict, match_id: str, fmt: str) -> MatchTrace | None:
         target=target_info.get("runs") or total1 + 1,
         first=first,
         second=second,
+        gender=match_gender,
     )
 
 
-def iter_traces(fmt: str, path: Path | None = None) -> Iterator[MatchTrace]:
-    archive = path or archive_path(fmt)
-    if not archive.exists():
-        raise FileNotFoundError(
-            f"{archive} not found - run `python -m pipeline fetch --formats {fmt}` first"
-        )
-    with zipfile.ZipFile(archive) as zf:
-        for name in sorted(zf.namelist()):
-            if not name.endswith(".json") or "README" in name:
-                continue
-            try:
-                raw = json.loads(zf.read(name))
-            except (json.JSONDecodeError, KeyError):
-                continue
-            trace = trace_match(raw, Path(name).stem, fmt)
-            if trace:
-                yield trace
+def iter_traces(fmt: str, path: Path | None = None, genders=("male",),
+                venue_key=None) -> Iterator[MatchTrace]:
+    """Every usable match of ``genders`` in a format's archive, in one pass.
+
+    ``venue_key`` maps (venue, city) to a VenueKey.
+    """
+    for match_id, raw in iter_raw(fmt, gender=genders, path=path):
+        info = raw.get("info", {})
+        key = venue_key(info.get("venue", ""), info.get("city")) if venue_key else None
+        trace = trace_match(raw, match_id, fmt, gender=None, venue_key=key)
+        if trace:
+            yield trace
 
 
 # ---------------------------------------------------------------------------
@@ -536,30 +537,30 @@ def choose_half_life(fmt: str, train: list[MatchTrace], holdout_from: str,
 # ---------------------------------------------------------------------------
 # Par scores by ground
 # ---------------------------------------------------------------------------
-def canonical_venue(name: str) -> str:
-    """Cricsheet writes some grounds both as "Wankhede Stadium" and
-    "Wankhede Stadium, Mumbai"; the part before the first comma is stable.
-    The web app applies the same rule to live feed venue names."""
-    return name.split(",")[0].strip()
-
-
-def venue_pars(traces: list[MatchTrace], model: WinModel, min_matches: int = 5,
+def venue_pars(firsts: dict[str, list[int]], model: WinModel, min_matches: int = 5,
                prior: float = 8.0) -> dict[str, dict]:
     """Ground-adjusted par: the format par shifted by how much more or less
-    sides score there, shrunk toward zero for grounds with few matches."""
-    global_mean_totals = [t.first_total for t in traces if t.first_complete]
-    if not global_mean_totals:
+    sides score there, shrunk toward zero for grounds with few matches.
+
+    ``firsts`` maps a VenueKey to its first-innings totals: every first
+    innings that counts towards a ground's average under
+    :func:`matches.first_innings_total`, over every match of the formatKey.
+    venues.json and teams/ average exactly the same totals, so a ground's
+    average is one number wherever it appears. (The model's training traces
+    are narrower - no rain-rule or no-result matches - but a first innings
+    that ran its course says as much about a ground either way.) Keyed by
+    VenueKey, so grounds that share a name are never pooled.
+    """
+    every = [t for venue, totals in firsts.items() if venue for t in totals]
+    if not every:
         return {}
-    gmean = sum(global_mean_totals) / len(global_mean_totals)
+    gmean = sum(every) / len(every)
     par = model.par_total()
-    by_venue: dict[str, list[int]] = defaultdict(list)
-    for t in traces:
-        if t.first_complete and t.venue:
-            by_venue[canonical_venue(t.venue)].append(t.first_total)
     out = {}
-    for venue, totals in by_venue.items():
+    for venue in sorted(firsts):
+        totals = firsts[venue]
         n = len(totals)
-        if n < min_matches:
+        if not venue or n < min_matches:
             continue
         shift = (sum(totals) / n - gmean) * n / (n + prior)
         out[venue] = {"matches": n, "averageFirstInnings": round(sum(totals) / n, 1),
@@ -570,9 +571,11 @@ def venue_pars(traces: list[MatchTrace], model: WinModel, min_matches: int = 5,
 # ---------------------------------------------------------------------------
 # Build and export
 # ---------------------------------------------------------------------------
-def model_to_json(model: WinModel) -> dict:
+def model_to_json(model: WinModel, gender: str = "male") -> dict:
     res = model.resources
     return {
+        "formatKey": format_key(model.fmt, gender),
+        "gender": gender,
         "format": model.fmt,
         "maxBalls": res.max_balls,
         "theta": [round(t, 6) for t in model.theta],
@@ -585,9 +588,31 @@ def model_to_json(model: WinModel) -> dict:
     }
 
 
+def model_from_json(payload: dict) -> WinModel:
+    """Rebuild a model from its exported JSON, exactly as a client would.
+
+    The exported tables are rounded, so the rebuilt model differs slightly from
+    the fitted one; anything checked against a port of the model (golden
+    states, win curves) is computed from this rebuilt model, not the fitted one.
+    """
+    res = Resources(max_balls=payload["maxBalls"],
+                    table=[list(row) for row in payload["resources"]],
+                    dispersion=list(payload["dispersion"]),
+                    params=[(p["z"], p["b"]) for p in payload["resourceParams"]])
+    model = WinModel(fmt=payload["format"], resources=res, theta=list(payload["theta"]),
+                     half_life=payload.get("halfLifeYears"))
+    model.first_innings_win = list(payload["firstInningsWin"])
+    return model
+
+
 def golden_states(model: WinModel, n: int = 60) -> list[dict]:
     """A spread of states with expected outputs, so the TypeScript port can be
-    checked against this implementation number for number."""
+    checked against this implementation number for number.
+
+    Call it on the model rebuilt from the exported JSON (model_from_json), so
+    the port, which only has the JSON, can match to floating-point precision.
+    The values are not rounded for the same reason.
+    """
     out = []
     mb = model.max_balls
     for i in range(n):
@@ -598,46 +623,98 @@ def golden_states(model: WinModel, n: int = 60) -> list[dict]:
         proj = model.projected(u, w, runs)
         out.append({
             "ballsLeft": u, "wickets": w, "runs": runs, "need": need,
-            "chase": round(model.chase(u, w, need), 6),
-            "battingFirst": round(model.batting_first(u, w, runs), 6),
-            "projected": [round(v, 3) for v in proj],
+            "chase": model.chase(u, w, need),
+            "battingFirst": model.batting_first(u, w, runs),
+            "projected": list(proj),
         })
     return out
 
 
+#: A formatKey with fewer usable matches than this gets no model.
+MIN_MODEL_MATCHES = 100
+
+
+def build_model(fmt: str, gender: str, traces: list[MatchTrace],
+                holdout_from: str = HOLDOUT_FROM,
+                firsts: dict[str, list[int]] | None = None) -> dict:
+    """Fit, validate and export the model for one formatKey.
+
+    ``firsts`` holds the grounds' first-innings totals (see venue_pars).
+    """
+    train = [t for t in traces if t.date < holdout_from]
+    test = [t for t in traces if t.date >= holdout_from]
+    fk = format_key(fmt, gender)
+    log.info("%s: %d usable matches (%d train, %d holdout)", fk, len(traces), len(train), len(test))
+
+    decided = [t for t in train if not t.tie]
+    base_first = sum(t.batting_first_won for t in decided) / max(len(decided), 1)
+
+    half_life, selection = choose_half_life(fmt, train, holdout_from, base_first)
+    validation_model = fit_model(fmt, train, half_life)
+    validation = evaluate(validation_model, test, base_first, 1 - base_first)
+
+    # Export the model fitted on everything, then rebuild it from its own
+    # JSON: par, ground pars and golden states all come from what a client
+    # loading winprob.json actually has.
+    payload = model_to_json(fit_model(fmt, traces, half_life), gender)
+    exported = model_from_json(json.loads(json.dumps(payload)))
+    payload["par"] = exported.par_total()
+    payload["matches"] = len(traces)
+    payload["halfLifeYears"] = half_life
+    payload["validation"] = {"trainMatches": len(train), "testMatches": len(test),
+                             "halfLifeSelection": selection, **validation}
+    payload["venues"] = venue_pars(firsts or {}, exported)
+    payload["golden"] = golden_states(exported)
+    log.info("%s: half-life %s, chase Brier %.4f (baseline %.4f), first-innings Brier %.4f, par %d",
+             fk, half_life, validation["chase"]["brier"], validation["chase"]["baselineBrier"],
+             validation["firstInnings"]["brier"], payload["par"])
+    return payload
+
+
 def build(formats: tuple[str, ...] = LIMITED_FORMATS, out_dir: Path | None = None,
-          holdout_from: str = HOLDOUT_FROM) -> dict:
+          holdout_from: str = HOLDOUT_FROM, archives: dict[str, Path] | None = None,
+          genders: tuple[str, ...] = tuple(GENDERS), venue_key=None) -> dict:
+    """Fit a model per formatKey and write winprob.json.
+
+    ``venue_key`` maps (venue, city) to a VenueKey; by default the corpus is
+    scanned for it, as every command does.
+    """
     from .config import WEB_DATA_DIR
 
     out_dir = out_dir or WEB_DATA_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    result: dict = {"generatedFrom": "Cricsheet ball-by-ball (CC BY 4.0)", "holdoutFrom": holdout_from,
+    if venue_key is None:
+        from .corpus import scan
+        venue_key = scan(archives=archives).venues.key
+    result: dict = {"schemaVersion": SCHEMA_VERSION,
+                    "generatedFrom": "Cricsheet ball-by-ball (CC BY 4.0)", "holdoutFrom": holdout_from,
                     "formats": {}}
+    models: dict[str, dict] = {}
     for fmt in formats:
-        traces = list(iter_traces(fmt))
-        train = [t for t in traces if t.date < holdout_from]
-        test = [t for t in traces if t.date >= holdout_from]
-        log.info("%s: %d usable matches (%d train, %d holdout)", fmt, len(traces), len(train), len(test))
-
-        decided = [t for t in train if not t.tie]
-        base_first = sum(t.batting_first_won for t in decided) / max(len(decided), 1)
-
-        half_life, selection = choose_half_life(fmt, train, holdout_from, base_first)
-        validation_model = fit_model(fmt, train, half_life)
-        validation = evaluate(validation_model, test, base_first, 1 - base_first)
-
-        model = fit_model(fmt, traces, half_life)
-        payload = model_to_json(model)
-        payload["matches"] = len(traces)
-        payload["halfLifeYears"] = half_life
-        payload["validation"] = {"trainMatches": len(train), "testMatches": len(test),
-                                 "halfLifeSelection": selection, **validation}
-        payload["venues"] = venue_pars(traces, model)
-        payload["golden"] = golden_states(model)
-        result["formats"][fmt] = payload
-        log.info("%s: half-life %s, chase Brier %.4f (baseline %.4f), first-innings Brier %.4f, par %d",
-                 fmt, half_life, validation["chase"]["brier"], validation["chase"]["baselineBrier"],
-                 validation["firstInnings"]["brier"], payload["par"])
+        by_gender: dict[str, list[MatchTrace]] = {g: [] for g in genders}
+        firsts: dict[str, dict[str, list[int]]] = {g: defaultdict(list) for g in genders}
+        for match_id, raw in iter_raw(fmt, gender=genders, path=(archives or {}).get(fmt)):
+            info = raw.get("info", {})
+            gender = info.get("gender", "male")
+            key = venue_key(info.get("venue", ""), info.get("city"))
+            trace = trace_match(raw, match_id, fmt, gender=None, venue_key=key)
+            if trace:
+                by_gender[gender].append(trace)
+            total = first_innings_of(raw, fmt)
+            if total is not None and key:
+                firsts[gender][key].append(total)
+        for gender, traces in by_gender.items():
+            if len(traces) < MIN_MODEL_MATCHES:
+                log.warning("%s: only %d usable matches; no model", format_key(fmt, gender),
+                            len(traces))
+                continue
+            models[format_key(fmt, gender)] = build_model(fmt, gender, traces, holdout_from,
+                                                          firsts[gender])
+    # A stable key order: men's then women's, ODI before T20I.
+    for gender in GENDERS:
+        for fmt in LIMITED_FORMATS:
+            if format_key(fmt, gender) in models:
+                result["formats"][format_key(fmt, gender)] = models[format_key(fmt, gender)]
 
     path = out_dir / "winprob.json"
     path.write_text(json.dumps(result, separators=(",", ":")))

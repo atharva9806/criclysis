@@ -1,200 +1,227 @@
 import Link from "next/link";
-import { buildTeamStrategy, getAllPlayers, getPlayerBySlug } from "@/lib/analytics";
-import { SectionTitle, FormBadge, RatingRing, flagEmoji } from "@/components/ui";
-import { AttributeRadar } from "@/components/charts/Charts";
-import StrategyControls from "./StrategyControls";
+import type { SplitRow, TraitRow } from "@/lib/contract/db";
+import { buildMatchupPlan, buildPlayerDossier, getDatasetMeta, listPlayers, listTeams } from "@/lib/data";
+import { fmtOfKey } from "@/lib/data/rows";
+import { FORMAT_LABEL, formatKeyLabel, int, planUnavailable, plural, splitLabel, type LabelContext } from "@/lib/format";
+import { fmtParam, qs, str, type SearchParams } from "@/lib/params";
+import { MatchGrid, Muted, PageHeader, Section, Select, SplitTable } from "@/components/data";
 
-export const dynamic = "force-dynamic";
+function Evidence({ title, claims, empty }: { title: string; claims: TraitRow[]; empty: string }) {
+  return (
+    <div className="card p-5">
+      <h3 className="font-semibold">{title}</h3>
+      {claims.length ? (
+        <ul className="mt-3 space-y-3 text-sm">
+          {claims.map((c) => (
+            <li key={`${c.kind}-${c.rank}`}>
+              <p>{c.text}</p>
+              <p className="text-xs text-[#6e6e73]">
+                Sample: {plural(c.balls, "ball")} · {c.confidence} confidence
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-[#6e6e73]">{empty}</p>
+      )}
+    </div>
+  );
+}
 
-export default async function StrategyPage({ searchParams }: { searchParams: Promise<{ team?: string; opponent?: string; player?: string; mode?: string }> }) {
+function KeyPlayers({ title, f, players }: { title: string; f: string; players: { playerId: string; name: string; slug: string | null; stat: string; traits: TraitRow[] }[] }) {
+  return (
+    <div className="card p-5">
+      <h3 className="font-semibold">{title}</h3>
+      {players.length ? (
+        <ul className="mt-3 space-y-3 text-sm">
+          {players.map((p) => (
+            <li key={p.playerId}>
+              {p.slug ? (
+                <Link href={`/players/${p.slug}${qs({ f })}`} className="font-medium hover:text-[#0071e3]">{p.name}</Link>
+              ) : (
+                <span className="font-medium">{p.name}</span>
+              )}
+              <span className="text-[#6e6e73]"> · {p.stat}</span>
+              {p.traits.map((t) => (
+                <p key={t.rank} className="mt-1 text-xs text-[#6e6e73]">{t.text}</p>
+              ))}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-[#6e6e73]">No player records for this team.</p>
+      )}
+    </div>
+  );
+}
+
+const tab = "rounded-full px-4 py-1.5 font-medium text-[#1d1d1f]/70 data-[active=true]:bg-white data-[active=true]:text-[#1d1d1f] data-[active=true]:shadow-sm";
+
+export default async function StrategyPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
-  const all = await getAllPlayers();
-  const teams = Array.from(new Set(all.map((p) => p.country))).sort();
-  const mode = sp.mode === "player" ? "player" : "team";
-  const team = teams.includes(sp.team ?? "") ? sp.team! : "India";
-  const opponent = teams.includes(sp.opponent ?? "") && sp.opponent !== team ? sp.opponent! : teams.find((t) => t !== team) ?? "Australia";
-  const playerSlug = sp.player ?? all[0]?.slug;
-
-  const ts = mode === "team" ? await buildTeamStrategy(team, opponent) : null;
-  const pp = mode === "player" ? await getPlayerBySlug(playerSlug) : null;
+  const mode = str(sp.mode) === "team" ? "team" : "player";
+  const fmt = fmtParam(sp.f);
+  const meta = await getDatasetMeta();
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-16">
-      <SectionTitle eyebrow="Strategy planner" title="Plan the game before it's played." sub="Generate a data-backed game plan for any fixture, or an individual dossier on any player." />
-      <StrategyControls teams={teams} players={all.map((p) => ({ slug: p.slug, name: p.name, country: p.country }))} mode={mode} team={team} opponent={opponent} player={playerSlug} />
+    <div className="mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
+      <PageHeader
+        eyebrow="Strategy"
+        title="Plans built only from the evidence."
+        sub="Every line below is a measured split or record from the data, with the sample behind it. Nothing here is a prediction."
+      />
+      <nav className="segment" aria-label="Mode">
+        <Link href="/strategy?mode=player" data-active={mode === "player"} className={tab}>Player dossier</Link>
+        <Link href="/strategy?mode=team" data-active={mode === "team"} className={tab}>Team fixture</Link>
+      </nav>
+      {mode === "player" ? <PlayerMode p={str(sp.p)} fmt={fmt} meta={meta} /> : <TeamMode team={str(sp.team)} opp={str(sp.opp)} fmt={fmt} minMatches={meta?.thresholds.teamMinMatches ?? 5} />}
+    </div>
+  );
+}
 
-      {ts && (
-        <div className="mt-8 space-y-6">
-          {/* Scoreline */}
-          <div className="dark-card p-8">
-            <div className="grid items-center gap-6 md:grid-cols-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-white/50">Team</p>
-                <h2 className="headline mt-1 text-4xl">{ts.team}</h2>
-                <p className="mt-1 text-white/60">Squad rating {ts.teamRating}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs uppercase tracking-[0.18em] text-white/50">Win probability</p>
-                <p className="headline mt-1 text-6xl tabular-nums">{ts.winProbability}%</p>
-                <div className="mx-auto mt-3 h-2 w-full max-w-xs overflow-hidden rounded-full bg-white/10">
-                  <div className="h-2 rounded-full bg-gradient-to-r from-[#0a84ff] to-[#34c759]" style={{ width: `${ts.winProbability}%` }} />
-                </div>
-              </div>
-              <div className="md:text-right">
-                <p className="text-xs uppercase tracking-[0.18em] text-white/50">Opponent</p>
-                <h2 className="headline mt-1 text-4xl">{ts.opponent}</h2>
-                <p className="mt-1 text-white/60">Squad rating {ts.oppRating}</p>
-              </div>
-            </div>
-          </div>
+async function PlayerMode({ p, fmt, meta }: { p?: string; fmt?: ReturnType<typeof fmtParam>; meta: Awaited<ReturnType<typeof getDatasetMeta>> }) {
+  let slug = p;
+  let suggestions: { slug: string; name: string; teams: string[] }[] = [];
+  let dossier = slug ? await buildPlayerDossier(slug, fmt) : null;
+  if (slug && !dossier) {
+    const found = await listPlayers({ search: slug, pageSize: 8 });
+    if (found.rows.length === 1) {
+      slug = found.rows[0].slug;
+      dossier = await buildPlayerDossier(slug, fmt);
+    } else suggestions = found.rows;
+  }
+  const f = dossier ? fmtOfKey(dossier.formatKey) : null;
+  const ctx: LabelContext = { bowlingTypes: meta?.bowlingTypes ?? {}, phases: f ? (meta?.phases[f] ?? []) : [] };
+  const lab = (r: SplitRow) => splitLabel(r.dimension, r.subject, r.label, ctx);
+  const batEmpty = `Not enough balls: splits are shown from ${meta?.thresholds.minBallsSplit ?? 60} balls faced.`;
+  const bowlEmpty = `Not enough balls: splits are shown from ${meta?.thresholds.minBallsBowledSplit ?? 90} balls bowled.`;
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="card p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0071e3]">Squad profile</p>
-              <h3 className="mt-1 text-lg font-semibold">Attribute overlay</h3>
-              <AttributeRadar data={ts.radar} keys={[{ key: "team", name: ts.team, color: "#0071e3" }, { key: "opponent", name: ts.opponent, color: "#ff375f" }]} height={320} />
-            </div>
-            <div className="card p-6 lg:col-span-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7d3cff]">Game plan</p>
-              <h3 className="mt-1 text-lg font-semibold">{ts.team} v {ts.opponent}</h3>
-              <ol className="mt-4 space-y-3">
-                {ts.gamePlan.map((g, i) => (
-                  <li key={i} className="flex gap-4 rounded-2xl bg-[#f5f5f7] p-4 text-sm leading-relaxed">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#1d1d1f] text-xs font-semibold text-white">{i + 1}</span>
-                    {g}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </div>
+  return (
+    <>
+      <form method="get" action="/strategy" className="card mt-6 flex flex-wrap items-end gap-3 p-4">
+        <input type="hidden" name="mode" value="player" />
+        <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-xs font-medium text-[#6e6e73]">
+          Player
+          <input name="p" defaultValue={slug ?? ""} placeholder="Name or profile id" className="rounded-full bg-[#e8e8ed] px-4 py-2.5 text-sm text-[#1d1d1f]" />
+        </label>
+        <Select name="f" label="Format" value={fmt} options={[["", "Main format"], ["test", "Test"], ["odi", "ODI"], ["t20i", "T20I"]]} />
+        <button type="submit" className="btn-primary">Build dossier</button>
+      </form>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="card p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff375f]">Key threats</p>
-              <h3 className="mt-1 text-lg font-semibold">Contain these players</h3>
-              <ul className="mt-4 divide-y divide-black/5">
-                {ts.keyThreats.map(({ player, why }) => (
-                  <li key={player.id}>
-                    <Link href={`/players/${player.slug}`} className="flex items-center justify-between py-3">
-                      <span className="flex items-center gap-3">
-                        <span className="text-xl">{flagEmoji(player.countryCode)}</span>
-                        <span>
-                          <span className="block font-medium">{player.name}</span>
-                          <span className="block text-xs text-[#6e6e73]">{why}</span>
-                        </span>
-                      </span>
-                      <RatingRing value={player.overallRating} size={44} />
-                    </Link>
+      {!slug ? (
+        <div className="mt-6"><Muted>Choose a player to see where the evidence says to attack them and what to avoid.</Muted></div>
+      ) : !dossier ? (
+        <div className="mt-6">
+          {suggestions.length ? (
+            <div className="card p-5 text-sm">
+              <p className="text-[#6e6e73]">Did you mean:</p>
+              <ul className="mt-1 space-y-1">
+                {suggestions.map((r) => (
+                  <li key={r.slug}>
+                    <Link className="text-[#0071e3] hover:underline" href={`/strategy${qs({ mode: "player", p: r.slug, f: fmt })}`}>{r.name}</Link>{" "}
+                    <span className="text-[#6e6e73]">{r.teams.join(", ")}</span>
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="card p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#34c759]">Targets</p>
-              <h3 className="mt-1 text-lg font-semibold">Attack these players</h3>
-              <ul className="mt-4 divide-y divide-black/5">
-                {ts.targets.map(({ player, why }) => (
-                  <li key={player.id}>
-                    <Link href={`/players/${player.slug}`} className="flex items-center justify-between py-3">
-                      <span className="flex items-center gap-3">
-                        <span className="text-xl">{flagEmoji(player.countryCode)}</span>
-                        <span>
-                          <span className="block font-medium">{player.name}</span>
-                          <span className="block text-xs text-[#6e6e73]">{why}</span>
-                        </span>
-                      </span>
-                      <FormBadge form={player.form} label={player.formLabel} />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            {[ts.squad, ts.oppSquad].map((sq, idx) => (
-              <div key={idx} className="card overflow-hidden">
-                <div className="px-5 py-4 text-sm font-semibold">{idx === 0 ? ts.team : ts.opponent} squad</div>
-                <table className="table-apple w-full">
-                  <thead><tr><th>Player</th><th>Role</th><th className="text-right">Rating</th><th className="text-right">Form</th></tr></thead>
-                  <tbody>
-                    {sq.map((p) => (
-                      <tr key={p.id}>
-                        <td><Link href={`/players/${p.slug}`} className="font-medium">{p.name}</Link></td>
-                        <td className="text-[#6e6e73]">{p.role}</td>
-                        <td className="text-right tabular-nums">{p.overallRating}</td>
-                        <td className="text-right tabular-nums">{p.form > 0 ? "+" : ""}{p.form}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
+          ) : (
+            <Muted>No player matches “{slug}”.</Muted>
+          )}
         </div>
+      ) : (
+        <>
+          <Section title={`${dossier.player.name}, ${formatKeyLabel(dossier.formatKey)}`} sub={<Link href={`/players/${dossier.player.slug}${qs({ f })}`} className="text-[#0071e3] hover:underline">Full profile →</Link>}>
+            {dossier.batting ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Evidence title="Bowling to them: where to attack" claims={dossier.batting.attack} empty="No batting weakness clears the thresholds in this format." />
+                <Evidence title="Bowling to them: what to avoid" claims={dossier.batting.avoid} empty="No batting strength clears the thresholds in this format." />
+              </div>
+            ) : null}
+            {dossier.bowling ? (
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <Evidence title="Batting against them: where they leak" claims={dossier.bowling.weaknesses} empty="No bowling weakness clears the thresholds in this format." />
+                <Evidence title="Batting against them: where they are strongest" claims={dossier.bowling.strengths} empty="No bowling strength clears the thresholds in this format." />
+              </div>
+            ) : null}
+          </Section>
+          {dossier.batting ? (
+            <Section title="Their batting against each bowling type and phase">
+              <div className="space-y-6">
+                <SplitTable rows={dossier.batting.vsType} label={lab} subjectHeader="Bowling type" empty={batEmpty} />
+                <SplitTable rows={dossier.batting.byPhase} label={lab} subjectHeader="Phase" empty={batEmpty} />
+              </div>
+            </Section>
+          ) : null}
+          {dossier.bowling ? (
+            <Section title="Their bowling by batter hand and phase">
+              <div className="space-y-6">
+                <SplitTable rows={dossier.bowling.byHand} label={lab} subjectHeader="Batter" empty={bowlEmpty} />
+                <SplitTable rows={dossier.bowling.byPhase} label={lab} subjectHeader="Phase" empty={bowlEmpty} />
+              </div>
+            </Section>
+          ) : null}
+        </>
       )}
+    </>
+  );
+}
 
-      {pp && (
-        <div className="mt-8 space-y-6">
-          <div className="dark-card p-8 md:p-10">
-            <div className="flex flex-wrap items-start justify-between gap-6">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-white/50">Player dossier · {pp.country}</p>
-                <h2 className="headline mt-2 text-4xl md:text-5xl">{pp.strategy.headline}</h2>
-                <p className="mt-3 max-w-3xl text-white/70">{pp.strategy.summary}</p>
-              </div>
-              <div className="text-center">
-                <p className="headline text-5xl tabular-nums">{pp.strategy.risk}</p>
-                <p className="text-[10px] uppercase tracking-wider text-white/50">threat rating</p>
-              </div>
-            </div>
-            <div className="mt-8 grid gap-6 md:grid-cols-3">
-              {[
-                ["Bowling plan", pp.strategy.bowlingPlan],
-                ["Field settings", pp.strategy.fieldPlan],
-                ["Batting plan", pp.strategy.battingPlan],
-              ].map(([title, items]) => (
-                <div key={title as string} className="rounded-2xl bg-white/5 p-5">
-                  <h3 className="font-semibold">{title as string}</h3>
-                  <ul className="mt-3 space-y-2.5 text-sm text-white/70">
-                    {(items as string[]).map((s, i) => (
-                      <li key={i} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0a84ff]" />{s}</li>
+async function TeamMode({ team, opp, fmt, minMatches }: { team?: string; opp?: string; fmt?: ReturnType<typeof fmtParam>; minMatches: number }) {
+  const teams = await listTeams();
+  if (!teams.length) {
+    return <div className="mt-6"><Muted>Team records are not in this build yet.</Muted></div>;
+  }
+  const f = fmt ?? "odi";
+  // Say why there is no plan rather than fall back to another format.
+  const unavailable = team && opp ? planUnavailable(teams.find((t) => t.id === team), teams.find((t) => t.id === opp), f) : null;
+  const plan = team && opp && !unavailable ? await buildMatchupPlan(team, opp, f) : null;
+  const options = teams.map((t) => [t.id, t.label] as [string, string]);
+
+  return (
+    <>
+      <form method="get" action="/strategy" className="card mt-6 flex flex-wrap items-end gap-3 p-4">
+        <input type="hidden" name="mode" value="team" />
+        <Select name="team" label="Team" value={team} options={[["", "Choose a team"], ...options]} />
+        <Select name="opp" label="Opponent" value={opp} options={[["", "Choose an opponent"], ...options]} />
+        <Select name="f" label="Format" value={f} options={[["test", "Test"], ["odi", "ODI"], ["t20i", "T20I"]]} />
+        <button type="submit" className="btn-primary">Build plan</button>
+      </form>
+      {!team || !opp ? (
+        <div className="mt-6"><Muted>Choose two teams of the same gender to see their records against each other and the opponent&apos;s patterns.</Muted></div>
+      ) : !plan ? (
+        <div className="mt-6"><Muted>{unavailable ?? `No ${FORMAT_LABEL[f]} data for this pairing.`}</Muted></div>
+      ) : (
+        <>
+          <Section title={`${plan.team.label} v ${plan.opponent.label}, ${formatKeyLabel(plan.formatKey)}`} sub={`Win percentages are shown from ${minMatches} decided matches.`}>
+            <div className="grid gap-4 md:grid-cols-2">
+              {plan.lines.map((g) => (
+                <div key={g.heading} className="card p-5">
+                  <h3 className="font-semibold">{g.heading}</h3>
+                  <ul className="mt-3 space-y-2 text-sm">
+                    {g.items.map((l, i) => (
+                      <li key={i}>
+                        {l.text} <span className="text-xs text-[#6e6e73]">({l.sample})</span>
+                      </li>
                     ))}
                   </ul>
                 </div>
               ))}
             </div>
-            <div className="mt-6 flex flex-wrap gap-3">
-              {pp.strategy.matchups.map((m) => (
-                <div key={m.label} className="rounded-2xl bg-white/5 px-4 py-3 text-sm">
-                  <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${m.verdict === "Favourable" ? "bg-[#34c759]/20 text-[#34c759]" : m.verdict === "Danger" ? "bg-[#ff375f]/20 text-[#ff375f]" : "bg-white/10 text-white/70"}`}>{m.verdict}</span>
-                  <span className="font-medium">{m.label}</span>
-                  <span className="text-white/50"> — {m.note}</span>
-                </div>
-              ))}
+          </Section>
+          <Section title={`${plan.opponent.label}'s leading players`} sub="Their two most significant weaknesses in this format, where they have a profile.">
+            <div className="grid gap-4 md:grid-cols-2">
+              <KeyPlayers title="Batters" f={f} players={plan.opponentBatters.map((b) => ({ ...b, stat: `${int(b.runs)} runs in ${plural(b.innings, "innings", "innings")}` }))} />
+              <KeyPlayers title="Bowlers" f={f} players={plan.opponentBowlers.map((b) => ({ ...b, stat: `${int(b.wickets)} wickets in ${plural(b.innings, "innings", "innings")}` }))} />
             </div>
-          </div>
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="card p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0071e3]">Attribute map</p>
-              <AttributeRadar data={pp.radar} />
-            </div>
-            <div className="card p-6 lg:col-span-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff375f]">Evidence</p>
-              <h3 className="mt-1 text-lg font-semibold">Traits driving this plan</h3>
-              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-                {pp.traits.map((t) => (
-                  <li key={t.id} className={`rounded-2xl p-4 text-sm ${t.kind === "strength" ? "bg-[#34c759]/10" : "bg-[#ff375f]/10"}`}>
-                    <p className="font-semibold">{t.title}</p>
-                    {t.metric && <p className="text-xs text-[#6e6e73]">{t.metric}</p>}
-                  </li>
-                ))}
-              </ul>
-              <Link href={`/players/${pp.slug}`} className="btn-ghost mt-4 px-0">Open full profile →</Link>
-            </div>
-          </div>
-        </div>
+          </Section>
+          <Section title="Recent meetings">
+            <MatchGrid matches={plan.recent} empty="These teams have not met in this format in the data." />
+            <p className="mt-4 text-sm">
+              <Link href={`/teams/${plan.team.id}/vs/${plan.opponent.id}${qs({ f })}`} className="text-[#0071e3] hover:underline">Full head to head →</Link>
+            </p>
+          </Section>
+        </>
       )}
-    </div>
+    </>
   );
 }

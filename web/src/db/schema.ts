@@ -403,7 +403,11 @@ export type StoredManifest = Pick<Manifest, "formats" | "phases" | "bowlingTypes
 
 export type TableChanges = Record<string, { inserted: number; updated: number; deleted: number }>;
 
-/** One row per import run; the active dataset is the latest status = 'complete'. */
+/**
+ * One row per import run; the active dataset is the latest status = 'complete'.
+ * A --format-keys run is 'partial': it never becomes the active dataset, the
+ * fingerprint baseline or the shrink-guard baseline.
+ */
 export const datasetMeta = pgTable(
   "dataset_meta",
   {
@@ -411,7 +415,7 @@ export const datasetMeta = pgTable(
     buildId: text("build_id").notNull(),
     schemaVersion: smallint("schema_version").notNull(),
     sourceFingerprint: text("source_fingerprint"),
-    status: text("status").notNull(), // running | complete | failed | aborted
+    status: text("status").notNull(), // running | complete | partial | failed | aborted
     startedAt: timestamp("started_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true, mode: "string" }),
     generatedAt: timestamp("generated_at", { withTimezone: true, mode: "string" }).notNull(),

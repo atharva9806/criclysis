@@ -9,10 +9,19 @@ the strategy planner has nothing to reason with.
 
 Where the data comes from
 -------------------------
-A published player-metadata table keyed on the Cricsheet person id, so it joins
-to ball-by-ball data exactly. The attributes ultimately originate from public
-player profiles; see docs/DATA_SOURCES.md for the provenance chain and the
-licensing caveat, which is real and worth reading before redistributing.
+A published player-metadata table. The attributes ultimately originate from
+public player profiles; see docs/DATA_SOURCES.md for the provenance chain and
+the licensing caveat, which is real and worth reading before redistributing.
+
+How it joins to the ball-by-ball data
+-------------------------------------
+:func:`convert` writes the table's ``cricsheet_id`` column when it has one, and
+a row with an id joins to that person exactly. The table the current
+``data/player_styles.csv`` was generated from had no such column, so its rows
+carry only names and ESPNcricinfo ids. The build therefore joins them by id
+through Cricsheet's people register (ESPNcricinfo id -> Cricsheet id) when it
+has been downloaded, and otherwise by name under strict rules - see
+``pipeline/enrich.py``. A name alone is not an identity.
 
 This module only converts that table into the project's own styles CSV. Nothing
 here fetches: the input is a local file, so a build stays reproducible and
@@ -36,7 +45,7 @@ IN_CRICINFO = "cricinfo_id"
 IN_FULL = "full_name"
 IN_DOB = "dob"
 
-OUT_FIELDS = ["name", "full_name", "bowling_type", "batting_hand", "role",
+OUT_FIELDS = ["name", "cricsheet_id", "full_name", "bowling_type", "batting_hand", "role",
               "country", "cricinfo_id", "source"]
 
 
@@ -83,6 +92,9 @@ def convert(source: Path, dest: Path) -> dict:
             continue
         out.append({
             "name": name,
+            # The person id is what the build joins on; the name is only used
+            # when it is missing (see pipeline/enrich.py).
+            "cricsheet_id": _clean(row.get(IN_ID)),
             # Cricsheet names players "V Kohli"; people search "Virat Kohli".
             # Carrying the full name is what makes that search work.
             "full_name": _clean(row.get(IN_FULL)),
@@ -96,7 +108,7 @@ def convert(source: Path, dest: Path) -> dict:
         stats["withStyle"] += 1 if bowling else 0
         stats["withHand"] += 1 if hand else 0
 
-    out.sort(key=lambda r: r["name"])
+    out.sort(key=lambda r: (r["name"], r["cricsheet_id"]))
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("w", newline="", encoding="utf-8") as fh:
         fh.write(

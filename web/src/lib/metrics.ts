@@ -85,3 +85,13 @@ export function toSplitRow(s: StoredSplit): SplitRow {
   const r = bowlRates({ balls: s.balls, runs: s.runs, wickets: s.wickets ?? 0, dots, fours, sixes });
   return { ...base, average: r.average, strikeRate: r.strikeRate, economy: r.economy, dotPct: r.dotPct, boundaryPct: r.boundaryPct };
 }
+
+/** Team phase rates (PhaseRow): runs per over and balls per wicket, from legal balls. */
+export function phaseRates(r: { balls: number; runs: number; wickets: number; dots: number; fours: number; sixes: number }) {
+  return {
+    runsPerOver: ratio(r.runs, r.balls, 6),
+    ballsPerWicket: ratio(r.balls, r.wickets),
+    dotPct: ratio(r.dots, r.balls, 100),
+    boundaryPct: ratio(r.fours + r.sixes, r.balls, 100),
+  };
+}

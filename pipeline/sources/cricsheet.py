@@ -8,16 +8,15 @@ can tell you they average 21 against left-arm wrist spin in the middle overs,
 which is the kind of statement this site exists to make.
 
 Attribution requirement (CC BY 4.0): any deployment must credit Cricsheet. The
-generated ``sources.json`` carries that credit and the About page renders it.
+generated ``manifest.json`` carries that credit and the Method page renders it.
 """
 from __future__ import annotations
 
 import csv
-import io
 import json
 import logging
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,6 +26,8 @@ from .. import net
 log = logging.getLogger(__name__)
 
 BASE = SOURCES["cricsheet"]["base"]
+#: Cricsheet's people register: person id -> ids on other sites. Only on
+#: cricsheet.org (no mirror carries it), so a build works without it.
 REGISTER_URL = f"{BASE}/register/people.csv"
 
 # Cricsheet filters automated traffic, which means a download can fail from a
@@ -66,6 +67,33 @@ def mirror_urls(fmt: str) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 # Normalised records
 # ---------------------------------------------------------------------------
+# Dismissals that are not credited to the bowler.
+NON_BOWLER_DISMISSALS = {
+    "run out", "retired hurt", "retired out", "retired not out",
+    "obstructing the field", "handled the ball", "timed out",
+}
+
+# Cricsheet records these in ``wickets`` too, but the batter is not out:
+# they neither count as a dismissal nor cost the batting side a wicket.
+NOT_DISMISSALS = {"retired hurt", "retired not out"}
+
+
+@dataclass(slots=True, frozen=True)
+class Wicket:
+    """One entry of a delivery's ``wickets`` list."""
+    kind: str
+    player_out: str
+    player_out_id: str
+
+    @property
+    def is_dismissal(self) -> bool:
+        return self.kind not in NOT_DISMISSALS
+
+    @property
+    def bowler_credited(self) -> bool:
+        return self.kind not in NON_BOWLER_DISMISSALS
+
+
 @dataclass(slots=True)
 class Delivery:
     """One delivery, flattened into the shape every metric module consumes."""
@@ -74,6 +102,7 @@ class Delivery:
     date: str
     season: str
     venue: str
+    venue_key: str
     city: str
     country: str
     gender: str
@@ -86,6 +115,11 @@ class Delivery:
     batter: str
     non_striker: str
     bowler: str
+    # Cricsheet person ids (info.registry). Names are only labels: two
+    # different players can share one, so everything is keyed by these.
+    batter_id: str
+    non_striker_id: str
+    bowler_id: str
     runs_batter: int
     runs_extras: int
     runs_total: int
@@ -95,12 +129,14 @@ class Delivery:
     legbyes: int
     is_legal: bool            # counts towards the over
     is_batter_ball: bool      # counts as a ball faced by the batter
-    wicket_kind: str | None
-    player_out: str | None
-    bowler_credited: bool     # dismissal attributed to the bowler
+    # Every wicket on the ball, in Cricsheet's order. Usually none or one,
+    # but a ball can carry two (a catch and a timed out; a run out at each
+    # end of a retirement).
+    wickets: tuple[Wicket, ...]
     phase: str
-    chasing: bool
-    target: int | None
+    chasing: bool             # batting second in a limited-overs match, or
+                              # fourth in a Test
+    target: int | None        # limited overs only: Cricsheet has no Test targets
     score_before: int
     wickets_before: int
 
@@ -117,6 +153,21 @@ class Delivery:
         # A dot for the batter: no run off the bat and no run taken.
         return self.is_batter_ball and self.runs_batter == 0 and self.runs_total == 0
 
+    @property
+    def team_wickets(self) -> int:
+        """Wickets the batting side lost on this ball."""
+        return sum(1 for w in self.wickets if w.is_dismissal)
+
+    @property
+    def credited_wicket(self) -> Wicket | None:
+        """The bowler's wicket on this ball, if any (there is at most one)."""
+        return next((w for w in self.wickets if w.bowler_credited), None)
+
+    def dismissal_of(self, person_id: str) -> Wicket | None:
+        """The wicket that dismissed this person on this ball, if any."""
+        return next((w for w in self.wickets
+                     if w.player_out_id == person_id and w.is_dismissal), None)
+
 
 @dataclass(slots=True)
 class MatchInfo:
@@ -125,7 +176,9 @@ class MatchInfo:
     date: str
     season: str
     venue: str
+    venue_key: str
     city: str
+    country: str
     gender: str
     teams: list[str]
     winner: str | None
@@ -135,15 +188,37 @@ class MatchInfo:
     registry: dict[str, str] = field(default_factory=dict)
 
 
-# Dismissals that are not credited to the bowler.
-NON_BOWLER_DISMISSALS = {
-    "run out", "retired hurt", "retired out", "retired not out",
-    "obstructing the field", "handled the ball", "timed out",
-}
-
-
 def archive_path(fmt: str) -> Path:
     return RAW_DIR / "cricsheet" / ALL_FORMATS[fmt]["archive"]
+
+
+def register_path() -> Path:
+    return RAW_DIR / "cricsheet" / "people.csv"
+
+
+def download_register(*, use_cache: bool = True) -> Path:
+    """Fetch Cricsheet's people register (cricsheet.org only)."""
+    return net.download(REGISTER_URL, register_path(), use_cache=use_cache)
+
+
+def load_register(path: Path | None = None) -> dict[str, str]:
+    """ESPNcricinfo id -> Cricsheet person id, from the people register.
+
+    Empty when the register has not been downloaded. An ESPNcricinfo id that
+    the register gives to two people is left out rather than guessed.
+    """
+    path = path or register_path()
+    if not path.exists():
+        return {}
+    seen: dict[str, set[str]] = {}
+    with path.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            ident = (row.get("identifier") or "").strip()
+            for column in ("key_cricinfo", "key_cricinfo_2"):
+                key = (row.get(column) or "").strip()
+                if ident and key:
+                    seen.setdefault(key, set()).add(ident)
+    return {key: next(iter(ids)) for key, ids in seen.items() if len(ids) == 1}
 
 
 def download_archive(fmt: str, *, use_cache: bool = True,
@@ -188,31 +263,26 @@ def phase_for(fmt: str, over: int) -> str:
     return PHASES.get(fmt, PHASES["odi"])[-1][0]
 
 
-def _venue_country(venue: str, city: str) -> str:
-    """Best-effort country attribution for a venue.
+def parse_match(raw: dict, match_id: str, fmt: str, venue_key: str | None = None,
+                country: str | None = None) -> tuple[MatchInfo, list[Delivery]]:
+    """Turn one Cricsheet match document into a MatchInfo plus flat deliveries.
 
-    Cricsheet does not carry a country field, so we fall back to a lookup keyed
-    on city. ``enrich.py`` can overwrite this with a better mapping; an unknown
-    country simply drops the venue out of the home/away split rather than
-    guessing.
+    ``venue_key`` and ``country`` come from the corpus's VenueIndex (see
+    :mod:`pipeline.venues`), which needs the whole corpus; without them the
+    plain ground name and this match's venue and city are used.
     """
-    from ..venues import VENUE_COUNTRY, CITY_COUNTRY
-    if venue in VENUE_COUNTRY:
-        return VENUE_COUNTRY[venue]
-    for name, country in VENUE_COUNTRY.items():
-        if name and name in venue:
-            return country
-    return CITY_COUNTRY.get(city, "")
+    from ..venues import canonical_venue, country_for
 
-
-def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Delivery]]:
-    """Turn one Cricsheet match document into a MatchInfo plus flat deliveries."""
     info = raw.get("info", {})
     dates = info.get("dates") or [""]
     venue = info.get("venue", "")
     city = info.get("city", "")
     teams = info.get("teams", [])
     outcome = info.get("outcome", {})
+    if country is None:
+        country = country_for(venue, city)
+    if venue_key is None:
+        venue_key = canonical_venue(venue)
 
     match = MatchInfo(
         match_id=match_id,
@@ -220,7 +290,9 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
         date=dates[0],
         season=str(info.get("season", "")),
         venue=venue,
+        venue_key=venue_key,
         city=city,
+        country=country,
         gender=info.get("gender", "male"),
         teams=list(teams),
         winner=outcome.get("winner"),
@@ -229,16 +301,27 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
         players=info.get("players", {}) or {},
         registry=((info.get("registry") or {}).get("people") or {}),
     )
-    country = _venue_country(venue, city)
+
+    def person_id(name: str) -> str:
+        """The player's Cricsheet id. Every name in a Cricsheet file is in its
+        registry; should one ever be missing, the name stands in, marked with
+        a '~' so it can never collide with a real id."""
+        if not name:
+            return ""
+        return match.registry.get(name) or f"~{name}"
 
     deliveries: list[Delivery] = []
+    innings_seen = 0
     for idx, inn in enumerate(raw.get("innings", [])):
         if inn.get("super_over"):
             continue
+        innings_seen += 1
         batting_team = inn.get("team", "")
         bowling_team = next((t for t in teams if t != batting_team), "")
         target = (inn.get("target") or {}).get("runs")
-        chasing = target is not None
+        # Limited overs: the second innings carries its target. Cricsheet gives
+        # Tests no target, but the fourth innings is the only chase there is.
+        chasing = innings_seen == 4 if fmt == "test" else target is not None
         ball_no = 0
         score = 0
         wickets = 0
@@ -259,14 +342,10 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
                 if is_legal:
                     ball_no += 1
 
-                wicket_kind = None
-                player_out = None
-                credited = False
-                for w in d.get("wickets", []) or []:
-                    wicket_kind = w.get("kind")
-                    player_out = w.get("player_out")
-                    credited = wicket_kind not in NON_BOWLER_DISMISSALS
-                    break  # at most one wicket matters for our metrics
+                wickets_here = tuple(
+                    Wicket(kind=w.get("kind", ""), player_out=w.get("player_out", ""),
+                           player_out_id=person_id(w.get("player_out", "")))
+                    for w in d.get("wickets") or [])
 
                 deliveries.append(Delivery(
                     match_id=match_id,
@@ -274,6 +353,7 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
                     date=match.date,
                     season=match.season,
                     venue=venue,
+                    venue_key=venue_key,
                     city=city,
                     country=country,
                     gender=match.gender,
@@ -286,6 +366,9 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
                     batter=d.get("batter", ""),
                     non_striker=d.get("non_striker", ""),
                     bowler=d.get("bowler", ""),
+                    batter_id=person_id(d.get("batter", "")),
+                    non_striker_id=person_id(d.get("non_striker", "")),
+                    bowler_id=person_id(d.get("bowler", "")),
                     runs_batter=int(runs.get("batter", 0)),
                     runs_extras=int(runs.get("extras", 0)),
                     runs_total=int(runs.get("total", 0)),
@@ -295,9 +378,7 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
                     legbyes=legbyes,
                     is_legal=is_legal,
                     is_batter_ball=is_batter_ball,
-                    wicket_kind=wicket_kind,
-                    player_out=player_out,
-                    bowler_credited=credited,
+                    wickets=wickets_here,
                     phase=phase_for(fmt, over),
                     chasing=chasing,
                     target=target,
@@ -305,25 +386,35 @@ def parse_match(raw: dict, match_id: str, fmt: str) -> tuple[MatchInfo, list[Del
                     wickets_before=wickets,
                 ))
                 score += int(runs.get("total", 0))
-                if wicket_kind:
-                    wickets += 1
+                wickets += sum(1 for w in wickets_here if w.is_dismissal)
 
     return match, deliveries
 
 
-def iter_matches(fmt: str, *, limit: int | None = None,
-                 gender: str | None = "male",
-                 path: Path | None = None) -> Iterator[tuple[MatchInfo, list[Delivery]]]:
-    """Stream every match in a format's archive.
+def _gender_filter(gender: str | Iterable[str] | None) -> frozenset[str] | None:
+    if gender is None:
+        return None
+    if isinstance(gender, str):
+        return frozenset([gender])
+    return frozenset(gender)
 
-    Yields one match at a time so that a full pass over ~20k matches never needs
-    more than one match in memory.
+
+def iter_raw(fmt: str, *, limit: int | None = None,
+             gender: str | Iterable[str] | None = "male",
+             path: Path | None = None) -> Iterator[tuple[str, dict]]:
+    """Stream (match id, Cricsheet document) for every match in an archive.
+
+    Files are read in sorted order so that every pass over an archive, and
+    therefore every build, sees the matches in the same order. ``gender`` is
+    one gender, several, or None for all; ``limit`` counts matches after the
+    gender filter.
     """
     archive = path or archive_path(fmt)
     if not archive.exists():
         raise FileNotFoundError(
             f"{archive} not found - run `python -m pipeline fetch --formats {fmt}` first"
         )
+    genders = _gender_filter(gender)
     count = 0
     with zipfile.ZipFile(archive) as zf:
         names = sorted(n for n in zf.namelist() if n.endswith(".json") and "README" not in n)
@@ -335,29 +426,27 @@ def iter_matches(fmt: str, *, limit: int | None = None,
             except (json.JSONDecodeError, KeyError) as exc:
                 log.warning("skipping unreadable %s: %s", name, exc)
                 continue
-            if gender and (raw.get("info", {}).get("gender") != gender):
-                continue
-            match_id = Path(name).stem
-            try:
-                yield parse_match(raw, match_id, fmt)
-            except Exception as exc:  # noqa: BLE001 - one bad file must not kill a run
-                log.warning("skipping %s: %s", name, exc)
+            if genders is not None and raw.get("info", {}).get("gender") not in genders:
                 continue
             count += 1
+            yield Path(name).stem, raw
 
 
-def load_register(*, use_cache: bool = True) -> dict[str, dict[str, str]]:
-    """Cricsheet's people register: person id -> identifiers on other sites.
+def iter_matches(fmt: str, *, limit: int | None = None,
+                 gender: str | Iterable[str] | None = "male",
+                 path: Path | None = None,
+                 venue_key=None) -> Iterator[tuple[MatchInfo, list[Delivery]]]:
+    """Stream every match in a format's archive, parsed.
 
-    The ``key_cricinfo`` column is what lets us line a Cricsheet player up with
-    their ESPNcricinfo profile for the metadata enrichment step.
+    Yields one match at a time so that a full pass over ~20k matches never needs
+    more than one match in memory. ``venue_key`` maps (venue, city) to a
+    VenueKey.
     """
-    text = net.get(REGISTER_URL, use_cache=use_cache)
-    reader = csv.DictReader(io.StringIO(text))  # type: ignore[arg-type]
-    out: dict[str, dict[str, str]] = {}
-    for row in reader:
-        ident = row.get("identifier")
-        if not ident:
+    for match_id, raw in iter_raw(fmt, limit=limit, gender=gender, path=path):
+        info = raw.get("info", {})
+        key = venue_key(info.get("venue", ""), info.get("city", "")) if venue_key else None
+        try:
+            yield parse_match(raw, match_id, fmt, venue_key=key)
+        except Exception as exc:  # noqa: BLE001 - one bad file must not kill a run
+            log.warning("skipping %s: %s", match_id, exc)
             continue
-        out[ident] = {k: v for k, v in row.items() if v}
-    return out

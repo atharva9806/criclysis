@@ -3,10 +3,13 @@
 // (§2) as a set of hash-guarded upserts in small transactions (§3.2).
 //
 //   node scripts/import/index.mjs --data ../data/out
-//     [--allow-shrink]          skip the 5% shrink guard
+//     [--allow-shrink]          skip the shrink guards (5% drops, missing replays)
 //     [--budget-mb 400]         exit 2 when the database ends up larger
 //     [--format-keys a,b]       only rewrite player-formats, matches, replays,
-//                               team summaries and models of these formatKeys
+//                               team summaries and models of these formatKeys;
+//                               the run is recorded as 'partial', so it never
+//                               becomes the active dataset or the fingerprint
+//                               baseline
 //     [--report path.json]      also write the import report as JSON
 //
 // Exit codes: 0 ok, 1 error (database untouched or left at a batch
@@ -17,7 +20,9 @@ import { config } from "dotenv";
 import pg from "pg";
 import { sha256Bytes } from "./lib/hash.mjs";
 import { mapMatch, mapPlayer, mapPlayerFormat, mapTeam, mapTeamSummary, mapVenue, mapWinModel, replayStats } from "./lib/mappers.mjs";
-import { formatKeyOf, openSource } from "./lib/source.mjs";
+import { assertLive, dedupePlayers, inputCounts, missingReplays, shrinkProblems } from "./lib/guards.mjs";
+import { Changes, tx } from "./lib/run.mjs";
+import { openSource } from "./lib/source.mjs";
 import { deletePlayerFormats, insertRows, upsertRows } from "./lib/sql.mjs";
 
 const LOCK_KEY = 4242;
@@ -25,7 +30,6 @@ const PLAYER_BATCH = 50;
 const REPLAY_BATCH = 200;
 const VACUUM_EVERY = 1000;
 const KEEP_META_ROWS = 30;
-const SHRINK_LIMIT = 0.95;
 const STATS_TABLES = ["innings", "yearly_stats", "splits", "dismissal_counts"];
 const ANALYSIS_TABLES = ["traits", "profile_dimensions"];
 const PF_TABLES = [...STATS_TABLES, ...ANALYSIS_TABLES, "career_stats"];
@@ -54,63 +58,7 @@ function parseArgs(argv) {
   return args;
 }
 
-class Changes {
-  constructor() {
-    this.t = {};
-  }
-  add(table, kind, n) {
-    if (!n) return;
-    this.t[table] ??= { inserted: 0, updated: 0, deleted: 0 };
-    this.t[table][kind] += n;
-  }
-  upserted(table, returned) {
-    for (const r of returned) this.add(table, r.inserted ? "inserted" : "updated", 1);
-  }
-  get total() {
-    return Object.values(this.t).reduce((s, c) => s + c.inserted + c.updated + c.deleted, 0);
-  }
-}
-
 const sizeMb = (bytes) => Math.round((bytes / 1048576) * 10) / 10;
-
-async function tx(client, fn) {
-  await client.query("BEGIN");
-  try {
-    const r = await fn();
-    await client.query("COMMIT");
-    return r;
-  } catch (e) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw e;
-  }
-}
-
-/** Per-formatKey input counts, used by the shrink guard and stored in dataset_meta.counts. */
-function inputCounts(src) {
-  const formats = {};
-  const bump = (fk, k) => {
-    formats[fk] ??= {};
-    formats[fk][k] = (formats[fk][k] ?? 0) + 1;
-  };
-  for (const p of src.playersIndex ?? []) {
-    for (const fmt of Object.keys(p.formats ?? {})) bump(formatKeyOf(fmt, p.gender ?? "male"), "players");
-  }
-  for (const m of src.matches ?? []) bump(m.formatKey ?? formatKeyOf(m.format, m.gender), "matches");
-  return formats;
-}
-
-function shrinkCheck(prev, now, formatKeys) {
-  const problems = [];
-  for (const [fk, before] of Object.entries(prev ?? {})) {
-    if (formatKeys && !formatKeys.includes(fk)) continue;
-    for (const k of ["players", "matches"]) {
-      if (!before[k] || now.__missing?.has(k)) continue;
-      const after = now[fk]?.[k] ?? 0;
-      if (after < before[k] * SHRINK_LIMIT) problems.push(`${fk} ${k}: ${before[k]} -> ${after}`);
-    }
-  }
-  return problems;
-}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -131,12 +79,11 @@ async function main() {
   log(`Importing ${args.data}`);
   const src = openSource(args.data, warn);
   const man = src.manifest;
-  const dataset = man.stored.provenance?.dataset;
-  if (dataset !== "live") throw new Error(`Refusing to import: manifest.provenance.dataset is ${JSON.stringify(dataset)}, not "live"`);
+  assertLive(man.stored);
   const thresholds = man.stored.thresholds;
   const selected = args.formatKeys ? new Set(args.formatKeys) : null;
   const inScope = (fk) => !selected || selected.has(fk);
-  log(`schema v${man.version}, build ${man.buildId}${selected ? `, only ${[...selected].join(", ")}` : ""}`);
+  log(`schema v${man.version}, build ${man.buildId}${selected ? `, only ${[...selected].join(", ")} (partial run)` : ""}`);
 
   const client = new pg.Client({ connectionString: url, application_name: "criclysis-import" });
   await client.connect();
@@ -158,27 +105,17 @@ async function main() {
     [man.buildId, man.version, src.fingerprint, man.generated, JSON.stringify(man.stored), src.cohorts ? JSON.stringify(src.cohorts) : null],
   );
   const metaId = metaRows[0].id;
+  // Only committed work is counted: each transaction merges its counts after COMMIT.
   const changes = new Changes();
   let exitCode = 0;
 
   try {
-    // ---------------------------------------------------- 1. shrink guard
-    const counts = inputCounts(src);
-    const missingKinds = new Set([...(src.playersIndex ? [] : ["players"]), ...(src.matches ? [] : ["matches"])]);
-    const { rows: prevRows } = await client.query(
-      `SELECT counts FROM dataset_meta WHERE status = 'complete' ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1`,
-    );
-    const problems = shrinkCheck(prevRows[0]?.counts?.formats, Object.assign({ __missing: missingKinds }, counts), args.formatKeys);
-    if (problems.length) {
-      const msg = `Shrink guard: counts fell more than 5% below the last complete import (${problems.join("; ")})`;
-      if (!args.allowShrink) throw new Error(`${msg}. Re-run with --allow-shrink if this is expected.`);
-      warn(`${msg}; continuing because of --allow-shrink`);
-    }
-
-    // ------------------------------------------- 2. reference data (one tx)
+    // ------------------------------ 1. read and map the build (no writes)
     let t = Date.now();
-    const hashMap = async (sqlText) => new Map((await client.query(sqlText)).rows.map((r) => [r.k, r.h]));
-    const changed = (map, key, row) => map.get(key) !== row.content_hash;
+    const { kept: index, dropped } = dedupePlayers(src.playersIndex);
+    if (dropped.length) {
+      warn(`${dropped.length} players.json entries repeat a person id; kept the larger sample: ${dropped.map((d) => `${d.dropped} (kept ${d.kept})`).join(", ")}`);
+    }
 
     const featuredFromIndex = new Map((src.replayIndex ?? []).map((r, i) => [r.id, i + 1]));
     const matchRows = (src.matches ?? []).map((m) => mapMatch(m, featuredFromIndex.get(m.id) ?? null)).filter((r) => inScope(r.format_key));
@@ -208,14 +145,61 @@ async function main() {
       .map(([fk, m]) => mapWinModel(fk, m, src.winprob.holdoutFrom))
       .filter((r) => inScope(r.format_key));
 
+    // ---------------------------------------------------- 2. guards
+    // Compared with the last full import only: partial runs never count.
+    const counts = {
+      formats: inputCounts({
+        players: index,
+        matches: src.matches,
+        teamSummaryKeys: [...teamFilesRead.values()].flat(),
+        winModelKeys: Object.keys(src.winprob?.formats ?? {}),
+      }),
+      teams: src.teamsIndex ? teamRows.size : null,
+      venues: src.venues ? venueRows.length : null,
+    };
+    const skip = [
+      ...(src.playersIndex ? [] : ["players"]),
+      ...(src.matches ? [] : ["matches"]),
+      ...(src.teamsIndex || teamFilesRead.size ? [] : ["teamSummaries"]),
+      ...(src.winprob ? [] : ["winModels"]),
+      ...(src.teamsIndex ? [] : ["teams"]),
+      ...(src.venues ? [] : ["venues"]),
+    ];
+    const { rows: prevRows } = await client.query(
+      `SELECT counts FROM dataset_meta WHERE status = 'complete' ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1`,
+    );
+    const problems = shrinkProblems(prevRows[0]?.counts, counts, { skip, formatKeys: args.formatKeys }).map(
+      (p) => `${p} (more than 5% below the last full import)`,
+    );
+    if (src.replayFiles) {
+      // Stored replays not in replays/ are deleted below; never those of matches still marked hasReplay.
+      const hasReplay = src.matches
+        ? matchRows.filter((r) => r.has_replay).map((r) => r.id)
+        : (await client.query(`SELECT id, format_key::text AS fk FROM matches WHERE has_replay`)).rows.filter((r) => inScope(r.fk)).map((r) => r.id);
+      const missing = missingReplays(hasReplay, src.replayFiles.map((f) => f.matchId));
+      if (missing.length) {
+        problems.push(`${missing.length} matches marked hasReplay have no file in replays/ (${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ", ..." : ""})`);
+      }
+    }
+    if (problems.length) {
+      const msg = `Shrink guard: this build would delete data: ${problems.join("; ")}`;
+      if (!args.allowShrink) throw new Error(`${msg}. Re-run with --allow-shrink if this is expected.`);
+      warn(`${msg}; continuing because of --allow-shrink`);
+    }
+    lap("read", t);
+
+    // ------------------------------------------- 3. reference data (one tx)
+    t = Date.now();
+    const hashMap = async (sqlText) => new Map((await client.query(sqlText)).rows.map((r) => [r.k, r.h]));
+    const changed = (map, key, row) => map.get(key) !== row.content_hash;
     // One pg.Client runs one query at a time, so these are sequential.
     const hTeams = await hashMap(`SELECT id AS k, content_hash AS h FROM teams`);
     const hSummaries = await hashMap(`SELECT team_id || '|' || format_key AS k, content_hash AS h FROM team_summaries`);
     const hVenues = await hashMap(`SELECT key AS k, content_hash AS h FROM venues`);
     const hMatches = await hashMap(`SELECT id AS k, content_hash AS h FROM matches`);
     const hModels = await hashMap(`SELECT format_key::text AS k, content_hash AS h FROM win_models`);
-    await tx(client, async () => {
-      const ups = async (table, rows) => changes.upserted(table, rows.length ? await upsertRows(client, table, rows) : []);
+    await tx(client, changes, async (local) => {
+      const ups = async (table, rows) => local.upserted(table, rows.length ? await upsertRows(client, table, rows) : []);
       await ups("teams", [...teamRows.values()].filter((r) => changed(hTeams, r.id, r)));
       await ups("team_summaries", summaryRows.filter((r) => changed(hSummaries, `${r.team_id}|${r.format_key}`, r)));
       await ups("venues", venueRows.filter((r) => changed(hVenues, r.key, r)));
@@ -225,7 +209,7 @@ async function main() {
     lap("reference", t);
     log(`reference data: ${teamRows.size} teams, ${summaryRows.length} team summaries, ${venueRows.length} venues, ${matchRows.length} matches, ${modelRows.length} models (${timings.reference}s)`);
 
-    // --------------------------------------- 3. players, 50 per transaction
+    // --------------------------------------- 4. players, 50 per transaction
     t = Date.now();
     const knownPlayers = new Map(
       (await client.query(`SELECT id, source_id, content_hash FROM players`)).rows.map((r) => [r.source_id, { id: r.id, hash: r.content_hash }]),
@@ -241,7 +225,6 @@ async function main() {
     let changedPF = 0;
     let sinceVacuum = 0;
     let playersSeen = 0;
-    const index = src.playersIndex ?? [];
 
     const vacuum = async () => {
       const v = Date.now();
@@ -275,9 +258,9 @@ async function main() {
 
       const dirty = work.filter((w) => w.playerChanged || w.pfs.some((pf) => pf.statsChanged || pf.analysisChanged));
       if (dirty.length) {
-        const done = await tx(client, async () => {
+        const done = await tx(client, changes, async (local) => {
           const ret = await upsertRows(client, "players", dirty.filter((w) => w.playerChanged).map((w) => w.row), { returning: ["id", "source_id"] });
-          changes.upserted("players", ret);
+          local.upserted("players", ret);
           const ids = new Map(ret.map((r) => [r.source_id, r.id]));
           const statsDel = [];
           const analysisDel = [];
@@ -305,11 +288,11 @@ async function main() {
               }
             }
           }
-          for (const table of STATS_TABLES) changes.add(table, "deleted", await deletePlayerFormats(client, table, statsDel));
-          for (const table of ANALYSIS_TABLES) changes.add(table, "deleted", await deletePlayerFormats(client, table, analysisDel));
-          for (const [table, list] of Object.entries(rows)) changes.add(table, "inserted", list.length ? await insertRows(client, table, list) : 0);
+          for (const table of STATS_TABLES) local.add(table, "deleted", await deletePlayerFormats(client, table, statsDel));
+          for (const table of ANALYSIS_TABLES) local.add(table, "deleted", await deletePlayerFormats(client, table, analysisDel));
+          for (const [table, list] of Object.entries(rows)) local.add(table, "inserted", list.length ? await insertRows(client, table, list) : 0);
           if (career.length) {
-            changes.upserted(
+            local.upserted(
               "career_stats",
               await upsertRows(client, "career_stats", career, {
                 guard: `t.stats_hash IS DISTINCT FROM excluded.stats_hash OR t.analysis_hash IS DISTINCT FROM excluded.analysis_hash`,
@@ -338,7 +321,7 @@ async function main() {
     lap("players", t);
     log(`players: ${playersSeen} read, ${changedPF} player-formats changed (${timings.players}s)`);
 
-    // ------------------------------------------- 4. replays, 200 per tx
+    // ------------------------------------------- 5. replays, 200 per tx
     t = Date.now();
     let replaysSeen = 0;
     let replaysNoMatch = 0;
@@ -351,7 +334,7 @@ async function main() {
         if (!batch.length) return;
         const rows = batch;
         batch = [];
-        await tx(client, async () => changes.upserted("match_replays", await upsertRows(client, "match_replays", rows)));
+        await tx(client, changes, async (local) => local.upserted("match_replays", await upsertRows(client, "match_replays", rows)));
       };
       for (const f of src.replayFiles) {
         replayIds.add(f.matchId);
@@ -377,12 +360,12 @@ async function main() {
     lap("replays", t);
     log(`replays: ${replaysSeen} matched files (${timings.replays}s)`);
 
-    // ------------------------------------------------ 5. deletions (one tx)
+    // ------------------------------------------------ 6. deletions (one tx)
     t = Date.now();
-    await tx(client, async () => {
+    await tx(client, changes, async (local) => {
       const del = async (table, sqlText, params) => {
         const r = await client.query(sqlText, params);
-        changes.add(table, "deleted", r.rowCount ?? 0);
+        local.add(table, "deleted", r.rowCount ?? 0);
       };
       const fkFilter = selected ? [...selected] : null;
 
@@ -398,7 +381,7 @@ async function main() {
           .map((k) => k.split("|"))
           .map(([pid, fk]) => [Number(pid), fk])
           .filter(([pid, fk]) => livePids.has(pid) && !keepPids.has(pid) && inScope(fk) && !presentPF.has(`${pid}|${fk}`));
-        for (const table of PF_TABLES) changes.add(table, "deleted", await deletePlayerFormats(client, table, stale));
+        for (const table of PF_TABLES) local.add(table, "deleted", await deletePlayerFormats(client, table, stale));
       }
       if (src.matches) {
         const ids = (src.matches ?? []).map((m) => m.id);
@@ -433,22 +416,24 @@ async function main() {
     });
     lap("deletions", t);
 
-    // ------------------------------------------------ 6. finish the run
+    // ------------------------------------------------ 7. finish the run
     const runCounts = {
-      formats: counts,
+      ...counts,
       players: index.length,
       matches: src.matches?.length ?? null,
       replays: src.replayFiles?.length ?? null,
-      teams: src.teamsIndex ? teamRows.size : null,
-      venues: src.venues ? venueRows.length : null,
       winModels: src.winprob ? Object.keys(src.winprob.formats).length : null,
       partial: args.formatKeys,
       missing: src.missing,
       warnings: warnings.slice(0, 50),
     };
+    // A partial run is not a whole build: it never becomes the active dataset
+    // (getDatasetMeta), the fingerprint baseline (check-fingerprint) or the
+    // shrink-guard baseline. Those read status = 'complete' only.
+    const status = selected ? "partial" : "complete";
     await client.query(
-      `UPDATE dataset_meta SET status = 'complete', finished_at = now(), counts = $2, changes = $3 WHERE id = $1`,
-      [metaId, JSON.stringify(runCounts), JSON.stringify(changes.t)],
+      `UPDATE dataset_meta SET status = $2, finished_at = now(), counts = $3, changes = $4 WHERE id = $1`,
+      [metaId, status, JSON.stringify(runCounts), JSON.stringify(changes.t)],
     );
     // Keep the last 30 runs, and always the latest complete one.
     await client.query(
@@ -456,7 +441,7 @@ async function main() {
        AND id <> (SELECT id FROM dataset_meta WHERE status = 'complete' ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1)`,
     );
 
-    // --------------------------------------------- 7. analyse and measure
+    // --------------------------------------------- 8. analyse and measure
     t = Date.now();
     await client.query("ANALYZE");
     const { rows: sizes } = await client.query(
@@ -474,13 +459,14 @@ async function main() {
     log(`\nchanges: ${changes.total === 0 ? "none (0 rows changed)" : changes.total + " rows"}`);
     for (const [table, c] of Object.entries(changes.t)) log(`  ${table.padEnd(20)} +${c.inserted} ~${c.updated} -${c.deleted}`);
     timings.total = Math.round((Date.now() - t0) / 100) / 10;
-    log(`\nimport complete in ${timings.total}s`);
+    log(`\n${status === "partial" ? "partial import (not the active dataset)" : "import"} complete in ${timings.total}s`);
 
     const report = {
       buildId: man.buildId,
       schemaVersion: man.version,
       fingerprint: src.fingerprint,
       datasetMetaId: metaId,
+      status,
       totalChanges: changes.total,
       changes: changes.t,
       counts: runCounts,

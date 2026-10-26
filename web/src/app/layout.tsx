@@ -33,7 +33,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <p className="mt-6 max-w-3xl leading-relaxed">
               Every number on this site is computed from ball-by-ball data published by{" "}
               <a href="https://cricsheet.org" className="underline hover:text-[#1d1d1f]">Cricsheet</a> under the{" "}
-              <a href="https://creativecommons.org/licenses/by/4.0/" className="underline hover:text-[#1d1d1f]">CC BY 4.0</a> licence.
+              <a href="https://creativecommons.org/licenses/by/4.0/" className="underline hover:text-[#1d1d1f]">CC BY 4.0</a>{" "}
+              licence.
               The data is refreshed from Cricsheet&apos;s public files about once a day; there is no live-score feed. Ball-by-ball coverage
               starts in the early 2000s, so careers that began earlier are only partly covered.
             </p>

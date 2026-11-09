@@ -99,6 +99,8 @@ type Fingerprint = {                                  // sha256 over sorted (nam
 
 The `formats` keys stay `"test" | "odi" | "t20i"`. The gender comes from the player, so `formatKey = `${fmt}-${G(player.gender)}``.
 
+`photo` is matched by id only: the player's ESPNcricinfo ids from Cricsheet's people register, Wikidata's ESPNcricinfo player id (P2697, checked through its formatter URL) and image (P18), then Commons for the thumbnail and credit. Ambiguous ids get no photo. The UI must show "Photo: {author}, {license}" with the image (`web/src/components/PlayerPhoto.tsx`). See `DATA_SOURCES.md` §3.
+
 ```ts
 type PlayersIndex = { players: Array<{
   id: PersonId; slug: string; name: string; fullName: string;
@@ -107,6 +109,7 @@ type PlayersIndex = { players: Array<{
   country: string; role: string; battingHand: string; bowlingType: string; bowlingLabel: string;
   born: string; debut: string; lastPlayed: string; cricinfoId: string;
   sampleBalls: number;                                // NEW: balls faced plus bowled, all formats
+  photo?: PlayerPhoto;                                // NEW (optional): same object as the file's meta.photo
   formats: Partial<Record<Fmt, {
     matches: number;                                  // NEW
     bat?: { inns: number; runs: number; balls: number; avg: number | null; sr: number; hs: number; "100s": number; "50s": number };
@@ -120,8 +123,19 @@ type PlayerFile = {
   gender: Gender;                                     // NEW
   meta: { bowlingType: string; battingHand: string; role: string; country: string; cricinfoId: string;
           fullName: string; born: string; teams: string[]; teamIds: TeamId[] /* NEW */;
-          debut: string; lastPlayed: string; gender: Gender /* NEW */ };
+          debut: string; lastPlayed: string; gender: Gender /* NEW */;
+          photo?: PlayerPhoto /* NEW, optional */ };
   formats: Partial<Record<Fmt, FormatPayload>>;
+};
+
+// Optional enrichment from Wikimedia Commons (pipeline/photos.py), only with `build --photos`.
+// Absent when the player has no usable image. Licence is CC0, public domain, CC BY or CC BY-SA.
+type PlayerPhoto = {
+  thumbUrl: string;          // 480px-wide thumbnail, https://upload.wikimedia.org/...
+  pageUrl: string;           // the file's page, https://commons.wikimedia.org/wiki/File:...
+  author: string;            // Commons "Artist", HTML stripped; "Unknown author" when empty
+  license: string;           // Commons "LicenseShortName", e.g. "CC BY-SA 4.0", "Public domain"
+  licenseUrl: string | null; // Commons "LicenseUrl"; null when there is none (public domain, usually)
 };
 
 type FormatPayload = {
@@ -391,6 +405,7 @@ players                                    PK id
   teams text[] NOT NULL default '{}' | team_ids text[] NOT NULL default '{}'
   role text | batting_hand text | bowling_type text | cricinfo_id text | born text
   debut date | last_played date | sample_balls int NOT NULL
+  photo_thumb_url, photo_page_url, photo_author, photo_license, photo_license_url text NULL   -- §1.4 PlayerPhoto; migration 0001
   overall_rating real NULL | form_index real NULL      -- reserved, unpopulated; never rendered
   content_hash text NOT NULL | updated_at timestamptz NOT NULL default now()
   idx (gender, last_played)
@@ -479,7 +494,7 @@ dataset_meta   -- one row per import run; the "active" dataset is the latest sta
 
 | Source | Tables | Key | Replace unit |
 |---|---|---|---|
-| `players.json` and `players/<slug>.json` `.meta` | players | source_id | row when `content_hash` differs |
+| `players.json` and `players/<slug>.json` `.meta` (including `photo`) | players | source_id | row when `content_hash` differs |
 | `formats.<fmt>` without strengths, weaknesses and profile | career_stats, innings, yearly_stats, splits, dismissal_counts | (player_id, format_key) | all five when `stats_hash` differs |
 | `formats.<fmt>` strengths, weaknesses and profile | traits, profile_dimensions | (player_id, format_key) | both when `analysis_hash` differs |
 | `teams/index.json` and `teams/*.json` | teams, team_summaries | id; (team_id, format_key) | row hash |
@@ -490,6 +505,7 @@ dataset_meta   -- one row per import run; the "active" dataset is the latest sta
 | `manifest.json` and `cohorts.json` | dataset_meta | new row per run | |
 
 Field details:
+- **players.photo_\*:** from `meta.photo` (or the index row's `photo`). A player without a photo has no `photo_*` keys in the hashed row, so their `content_hash` is the same as before photos existed; a new, changed or removed photo changes it.
 - **innings:**
   - `m`→match_id, `d`→played_on, `vs`→opponent, `inn`→innings_no.
   - Batting: `r`→runs, `b`→balls_faced, `f4`, `f6`, `out`, `pos`, `chase`, `how`→dismissal (`""`→null), `byId`→dismissed_by_id.
@@ -513,7 +529,9 @@ The step numbers below are the ones the comments in `refresh.yml` cite. Steps 4 
 3. `python -m pipeline fingerprint --out data/out/fingerprint.json`.
 4. `npm run check-fingerprint -- ../data/out/fingerprint.json` compares against the latest complete `dataset_meta.source_fingerprint` and prints `changed` or `unchanged`. If unchanged, steps 5 to 8 are skipped and the run ends successfully with an "Unchanged, skipped" notice. The check is skipped (so everything is rebuilt) when `force=true`, when `import=false`, or when `DATABASE_URL` is missing.
 5. Build, then check the replays in Python:
-   - `python -m pipeline build --genders male female`
+   - `python -m pipeline build --genders male female --photos`. `--photos` adds player photos (§1.4, `DATA_SOURCES.md` §3) with one Wikidata query and about one Commons call per 50 photos. The answers are cached in `.cache/photos/photos.json` for six days; `actions/cache` keeps that directory under the key `player-photos-<ISO week>` (restore-keys `player-photos-`), restored before the build and saved after it, both allowed to fail. The first run of a week starts from the newest earlier cache, refreshes it and saves it; later runs that week reuse it and make no requests. An outage means cached photos or none, never a failed build. The build log has two summary lines, copied to the run summary, and any Wikidata or Commons failure also becomes a warning:
+     - `photos: N players with a cricinfo id, M matched on Wikidata, I with an image, K accepted (licences: CC BY-SA 4.0 n, …), J rejected (GFDL n, …)[, U without Commons metadata]`
+     - `photos: wikidata <queried, n ESPNcricinfo ids | cached from <date> | unavailable (…)>; commons C calls, F failed, X of Y files from the cache[; skipped: …]`
    - `python -m pipeline winprob --genders male female`
    - `python -m pipeline replays --all --genders male female`
    - `python -m pipeline verify-replays --data data/out` checks every replay against the rest of the build (§1.9): innings totals, wickets, legal balls and penalty runs against `matches.json`, bowler figures against the player files, and team top bowlers against the replays summed. It lists the first mismatches and fails the run.

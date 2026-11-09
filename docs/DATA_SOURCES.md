@@ -9,13 +9,15 @@ In short:
 | Source | What it provides | Licence |
 |---|---|---|
 | [Cricsheet](https://cricsheet.org) JSON archives | Every ball of every match: batter, bowler, runs, extras, wickets, plus match info | CC BY 4.0 |
-| Cricsheet people register (`register/people.csv`) | A link from ESPNcricinfo player ids to Cricsheet person ids, used only to attach bowling styles | CC BY 4.0 |
+| Cricsheet people register (`register/people.csv`) | A link from ESPNcricinfo player ids to Cricsheet person ids, used to attach bowling styles and photos | CC BY 4.0 |
 | `data/player_styles.csv` | Bowling style, batting hand, role and country | Not open data; see section 2 |
 | `data/styles.csv` | 72 hand-curated corrections | Part of this repository |
+| [Wikidata](https://www.wikidata.org) and [Wikimedia Commons](https://commons.wikimedia.org) | Player photos, each with its author and licence; never a number | Per image: CC0, public domain, CC BY or CC BY-SA; see section 3 |
 
 Nothing else is used. There is no live-score API, no scraping and no paid
-feed. The only network access in the pipeline is `python -m pipeline fetch`,
-which downloads Cricsheet's files.
+feed. The pipeline uses the network in two places: `python -m pipeline fetch`,
+which downloads Cricsheet's files, and `python -m pipeline build --photos`,
+which asks Wikidata and Commons for photos (section 3).
 
 ## 1. Ball-by-ball match data: Cricsheet
 
@@ -144,6 +146,42 @@ statistic is unaffected. Bowlers still missing a style, per formatKey:
 | 11 | 59 | 711 | 2 | 36 | 510 |
 
 The Method page shows the same per-format count from the current build.
+
+## 3. Player photos: Wikidata and Wikimedia Commons
+
+Photos are optional decoration on the player page, never data. `build
+--photos` (`pipeline/photos.py`), which the daily refresh runs, finds them by
+id only:
+
+1. Cricsheet's people register gives each player's ESPNcricinfo ids
+   (`key_cricinfo`, `key_cricinfo_2`).
+2. One SPARQL query to the Wikidata Query Service lists every item with an
+   ESPNcricinfo player id (property P2697) and its image (P18). The same
+   query reads P2697's formatter URL, and the join is refused unless it
+   points at espncricinfo.com.
+3. The Commons API, 50 files per call, gives each image's 480px thumbnail,
+   author (`Artist`, as plain text) and licence (`LicenseShortName`,
+   `LicenseUrl`).
+
+- **Licences.** Only CC0, public domain, CC BY and CC BY-SA (any version) are
+  kept. Everything else (GFDL, NonCommercial, NoDerivatives, others) is
+  dropped and counted in the build log.
+- **Credit.** Every photo is shown with "Photo: author, licence", linked to
+  the file's Commons page and the licence. The Method page explains the
+  source. Nothing comes from Cricbuzz, ESPNcricinfo or photo agencies.
+- **Nothing guessed.** An ESPNcricinfo id claimed by two Wikidata items, a
+  player whose ids lead to two items, and an item two players lead to all
+  get no photo.
+- **Politeness.** A User-Agent naming the project and its repository, two
+  seconds between requests, `maxlag`, and few calls: one query and about one
+  Commons call per 50 photos, then nothing for six days (the answers are
+  cached in `.cache/photos/photos.json`, which the refresh keeps between runs).
+  `pipeline/net.py` exempts exactly the two API endpoints from its
+  `robots.txt` check: Wikimedia's `robots.txt` addresses crawlers, and these
+  are documented APIs for programs.
+- **Outages.** If Wikidata or Commons is down or slow, the build uses the
+  cached answers, however old, or builds without photos. It never fails
+  because of them.
 
 ## What is not in the data
 

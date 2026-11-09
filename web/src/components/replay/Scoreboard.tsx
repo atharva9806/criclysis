@@ -8,14 +8,14 @@ function Batter({ name, row, striker }: { name: string; row?: { runs: number; ba
       <span className="truncate">
         {name}
         {striker && (
-          <span className="ml-1 text-[#f5f5f7]/60" aria-label="on strike">
+          <span className="ml-1 text-on-inverse-muted" aria-label="on strike">
             *
           </span>
         )}
       </span>
       <span className="shrink-0 tabular-nums">
         <span className="font-semibold">{row?.runs ?? 0}</span>
-        <span className="text-[#f5f5f7]/60"> ({row?.balls ?? 0})</span>
+        <span className="text-on-inverse-muted"> ({row?.balls ?? 0})</span>
       </span>
     </li>
   );
@@ -34,8 +34,8 @@ export default function Scoreboard({ replay, timeline, state, card }: { replay: 
   const limited = state.ballsLeft != null || state.target != null;
 
   return (
-    <section aria-labelledby="scoreboard-title" className="dark-card p-5 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#f5f5f7]/70">
+    <section aria-labelledby="scoreboard-title" className="panel-inverse p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-on-inverse-muted">
         <span>
           Innings {state.innings + 1}
           {state.phase && limited ? ` · ${state.phase.label}` : ""}
@@ -48,16 +48,16 @@ export default function Scoreboard({ replay, timeline, state, card }: { replay: 
         ))}
       </div>
 
-      <h2 id="scoreboard-title" className="mt-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[#f5f5f7]/80">
+      <h2 id="scoreboard-title" className="mt-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-on-inverse">
         <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
         {state.battingTeam}
       </h2>
       <p className="mt-1 flex flex-wrap items-baseline gap-x-3">
         <span className="text-5xl font-semibold tracking-tight sm:text-6xl">
           {state.runs}
-          {!allOut && <span className="text-[#f5f5f7]/70">/{state.wickets}</span>}
+          {!allOut && <span className="text-on-inverse-muted">/{state.wickets}</span>}
         </span>
-        <span className="text-lg text-[#f5f5f7]/70 tabular-nums">
+        <span className="text-lg text-on-inverse-muted tabular-nums">
           {allOut ? "all out · " : ""}
           {state.overs} ov
         </span>
@@ -65,21 +65,21 @@ export default function Scoreboard({ replay, timeline, state, card }: { replay: 
 
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
         <div>
-          <dt className="text-[11px] uppercase tracking-wider text-[#f5f5f7]/60">Run rate</dt>
+          <dt className="text-[11px] uppercase tracking-wider text-on-inverse-muted">Run rate</dt>
           <dd className="mt-0.5 font-semibold tabular-nums">{fixed(state.runRate)}</dd>
         </div>
         {state.target != null ? (
           <>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-[#f5f5f7]/60">Target</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-on-inverse-muted">Target</dt>
               <dd className="mt-0.5 font-semibold tabular-nums">{state.target}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-[#f5f5f7]/60">Required rate</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-on-inverse-muted">Required rate</dt>
               <dd className="mt-0.5 font-semibold tabular-nums">{fixed(state.requiredRate)}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-[#f5f5f7]/60">To win</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-on-inverse-muted">To win</dt>
               <dd className="mt-0.5 font-semibold tabular-nums">
                 {state.need && !state.inningsComplete ? `${state.need}${state.ballsLeft != null ? ` off ${state.ballsLeft}` : ""}` : "–"}
               </dd>
@@ -87,18 +87,18 @@ export default function Scoreboard({ replay, timeline, state, card }: { replay: 
           </>
         ) : state.ballsLeft != null ? (
           <div>
-            <dt className="text-[11px] uppercase tracking-wider text-[#f5f5f7]/60">Balls left</dt>
+            <dt className="text-[11px] uppercase tracking-wider text-on-inverse-muted">Balls left</dt>
             <dd className="mt-0.5 font-semibold tabular-nums">{state.ballsLeft}</dd>
           </div>
         ) : null}
       </dl>
 
       {outcome ? (
-        <p className="mt-5 rounded-2xl bg-white/10 px-4 py-3 text-base font-semibold" role="status">
+        <p className="mt-5 rounded-card bg-white/10 px-4 py-3 text-base font-semibold" role="status">
           {outcome.text}
         </p>
       ) : state.inningsComplete ? (
-        <p className="mt-5 rounded-2xl bg-white/10 px-4 py-3 text-sm">
+        <p className="mt-5 rounded-card bg-white/10 px-4 py-3 text-sm">
           <span className="font-semibold">Innings break.</span>{" "}
           {nextInnings?.target != null
             ? `${nextInnings.team} need ${nextInnings.target} to win${nextInnings.ballLimit ? ` from ${plural(nextInnings.ballLimit, "ball")}` : ""}.`
@@ -107,21 +107,21 @@ export default function Scoreboard({ replay, timeline, state, card }: { replay: 
               : ""}
         </p>
       ) : (
-        <div className="mt-5 grid gap-4 border-t border-white/10 pt-4 text-sm sm:grid-cols-2">
+        <div className="mt-5 grid grid-cols-1 gap-4 border-t border-white/10 pt-4 text-sm sm:grid-cols-2">
           <div>
-            <p className="text-[11px] uppercase tracking-wider text-[#f5f5f7]/60">Batting</p>
+            <p className="text-[11px] uppercase tracking-wider text-on-inverse-muted">Batting</p>
             <ul className="mt-1.5 space-y-1">
               {state.striker != null && <Batter name={name(state.striker)} row={row(state.striker)} striker />}
               {state.nonStriker != null && <Batter name={name(state.nonStriker)} row={row(state.nonStriker)} striker={false} />}
             </ul>
             {partnership && (
-              <p className="mt-2 text-xs text-[#f5f5f7]/60 tabular-nums">
+              <p className="mt-2 text-xs text-on-inverse-muted tabular-nums">
                 Partnership {partnership.runs} ({partnership.balls})
               </p>
             )}
           </div>
           <div>
-            <p className="text-[11px] uppercase tracking-wider text-[#f5f5f7]/60">Bowling</p>
+            <p className="text-[11px] uppercase tracking-wider text-on-inverse-muted">Bowling</p>
             <p className="mt-1.5 flex items-baseline justify-between gap-3">
               <span className="truncate">{name(state.bowler)}</span>
               <span className="shrink-0 tabular-nums" aria-label={bowler ? `${bowler.overs} overs, ${bowler.maidens} maidens, ${bowler.runs} runs, ${bowler.wickets} wickets` : undefined}>

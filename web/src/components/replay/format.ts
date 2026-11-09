@@ -21,5 +21,9 @@ export const fixed = (v: number | null | undefined, digits = 2) => (v == null ||
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/** Team colours by innings order: slot 1 (the app accent) bats first, slot 2 chases. Validated for CVD separation. */
-export const TEAM_COLORS = ["#0071e3", "#eb6834"] as const;
+/**
+ * Team colours by innings order: slot 1 bats first, slot 2 chases. They are
+ * the --chart-1 and --chart-2 tokens (blue and orange, Okabe-Ito based, safe
+ * for colour-vision deficiency), so they follow the light or dark theme.
+ */
+export const TEAM_COLORS = ["var(--chart-1)", "var(--chart-2)"] as const;

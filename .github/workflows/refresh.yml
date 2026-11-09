@@ -154,10 +154,50 @@ jobs:
             echo "unchanged=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # §3.1 step 5.
+      # Player photos (§3.1 step 5). The build asks Wikidata and Wikimedia
+      # Commons for freely licensed photos and caches the answers in
+      # .cache/photos. The key rotates every ISO week: the first run of a
+      # week starts from the newest earlier cache (restore-keys), refreshes
+      # it and saves it; the week's other runs reuse it and make no requests.
+      # Both cache steps may fail without failing the run: a missing cache
+      # only means more requests, and a Wikimedia outage only means cached
+      # photos or none, never a failed build.
+      - name: Choose the photo cache key
+        id: photo-week
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'genders'
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the player-photo cache
+        id: photo-cache
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'genders'
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/photos
+          key: player-photos-${{ steps.photo-week.outputs.week }}
+          restore-keys: player-photos-
+
+      # §3.1 step 5. The `photos:` lines (counts, licences, and any Wikidata or
+      # Commons failure) go to the run summary, failures also as warnings.
       - name: Build men's and women's data
         if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'genders'
-        run: python -m pipeline build --genders male female
+        run: |
+          mkdir -p data
+          python -m pipeline build --genders male female --photos 2>&1 | tee data/build-log.txt
+          {
+            echo "### Player photos"
+            grep -E ' photos: ' data/build-log.txt | sed -E 's/^[0-9:]+ +[A-Z]+ +//; s/^/- /' || echo "- No photos: lines in the build log."
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -E '(WARNING|ERROR) +photos: ' data/build-log.txt \
+            | sed -E 's/^[0-9:]+ +[A-Z]+ +/::warning title=Player photos::/' || true
+
+      - name: Save the player-photo cache
+        if: always() && steps.photo-cache.outcome == 'success' && steps.photo-cache.outputs.cache-hit != 'true' && hashFiles('.cache/photos/photos.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/photos
+          key: player-photos-${{ steps.photo-week.outputs.week }}
 
       - name: Build men's data (current pipeline)
         if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'legacy'

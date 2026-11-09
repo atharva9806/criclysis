@@ -8,6 +8,10 @@ place to enforce the things that keep a scraper welcome:
 * a minimum delay between requests to the same host
 * on-disk caching so a re-run costs zero requests
 * exponential backoff that respects ``Retry-After``
+
+The one exception to the robots.txt check is :data:`ROBOTS_EXEMPT`: two
+documented Wikimedia APIs that the player-photo step (``pipeline/photos.py``)
+calls a handful of times per build.
 """
 from __future__ import annotations
 
@@ -26,6 +30,20 @@ from .config import NET, RAW_DIR
 log = logging.getLogger(__name__)
 
 _last_request: dict[str, float] = {}
+
+#: Documented APIs, built for programmatic clients, that skip the robots.txt
+#: check. Wikimedia's robots.txt is aimed at crawlers of its pages and
+#: disallows paths such as ``/w/`` for every user-agent, while these two
+#: endpoints exist to be called by scripts (Wikimedia's API and User-Agent
+#: policies, which ``pipeline/photos.py`` follows: a descriptive User-Agent
+#: with a contact, serial requests, ``maxlag`` and few calls: one SPARQL query
+#: and about one Commons call per 50 photos). The match is exact on scheme,
+#: host and path: every other URL on these hosts, and every other host, is
+#: still checked against robots.txt.
+ROBOTS_EXEMPT = frozenset({
+    ("https", "query.wikidata.org", "/sparql"),            # Wikidata Query Service
+    ("https", "commons.wikimedia.org", "/w/api.php"),      # MediaWiki Action API
+})
 _robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
 
 
@@ -87,9 +105,15 @@ def _robots_for(url: str) -> urllib.robotparser.RobotFileParser | None:
     return parser
 
 
+def robots_exempt(url: str) -> bool:
+    """True only for the exact API endpoints in :data:`ROBOTS_EXEMPT`."""
+    parts = urllib.parse.urlsplit(url)
+    return (parts.scheme, parts.netloc, parts.path) in ROBOTS_EXEMPT
+
+
 def allowed(url: str) -> bool:
     """Return True if robots.txt permits our user-agent to fetch ``url``."""
-    if not NET.respect_robots:
+    if not NET.respect_robots or robots_exempt(url):
         return True
     parser = _robots_for(url)
     if parser is None:
@@ -99,7 +123,7 @@ def allowed(url: str) -> bool:
 
 def crawl_delay(url: str) -> float:
     """Delay requested by the host, or our configured floor - whichever is larger."""
-    parser = _robots_for(url) if NET.respect_robots else None
+    parser = _robots_for(url) if NET.respect_robots and not robots_exempt(url) else None
     if parser is None:
         return NET.delay_seconds
     try:
@@ -117,8 +141,13 @@ def cache_path(url: str, suffix: str = "") -> Path:
 
 
 def get(url: str, *, binary: bool = False, use_cache: bool = True,
-        headers: dict[str, str] | None = None) -> bytes | str:
+        headers: dict[str, str] | None = None, timeout: float | None = None,
+        retries: int | None = None) -> bytes | str:
     """Fetch ``url``, using the on-disk cache when possible.
+
+    ``timeout`` (seconds per socket operation) and ``retries`` (attempts in
+    all) default to :data:`NET`; optional callers lower them so an outage
+    cannot hold up a build.
 
     Raises :class:`Blocked` when robots.txt disallows the URL and
     :class:`FetchError` when the request fails after all retries.
@@ -143,7 +172,7 @@ def get(url: str, *, binary: bool = False, use_cache: bool = True,
 
     delay = crawl_delay(url)
     last_error: Exception | None = None
-    for attempt in range(NET.max_retries):
+    for attempt in range(NET.max_retries if retries is None else max(1, retries)):
         if attempt:
             wait = NET.backoff_base ** attempt
             log.info("retry %d for %s in %.0fs", attempt, url, wait)
@@ -151,7 +180,7 @@ def get(url: str, *, binary: bool = False, use_cache: bool = True,
         _throttle(_host(url), delay)
         try:
             req = urllib.request.Request(url, headers=request_headers)
-            with urllib.request.urlopen(req, timeout=NET.timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout or NET.timeout) as resp:
                 raw = resp.read()
                 if resp.headers.get("Content-Encoding") == "gzip":
                     raw = gzip.decompress(raw)

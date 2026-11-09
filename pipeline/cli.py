@@ -11,8 +11,11 @@
 
 ``build`` is the one that matters: it streams the downloaded archives, fills the
 aggregates, runs the strengths/weaknesses analysis and writes data/out in the
-shape docs/ARCHITECTURE.md §1 describes. Nothing here scrapes or calls an API:
-the only network access is ``fetch``, which downloads Cricsheet's archives.
+shape docs/ARCHITECTURE.md §1 describes. Nothing here scrapes. The network is
+used by ``fetch``, which downloads Cricsheet's archives, and by ``build
+--photos``, which asks Wikidata and Wikimedia Commons for freely licensed
+player photos (optional: an outage means cached photos or none, never a failed
+build).
 """
 from __future__ import annotations
 
@@ -68,7 +71,8 @@ def cmd_build(args) -> int:
     try:
         build_dataset(Path(args.out), formats=tuple(args.formats), genders=tuple(args.genders),
                       styles_file=Path(args.styles_file) if args.styles_file else None,
-                      limit_matches=args.limit_matches, pretty=args.pretty)
+                      limit_matches=args.limit_matches, pretty=args.pretty,
+                      photos=getattr(args, "photos", False))
     except FileNotFoundError as exc:
         log.error("%s", exc)
         return 1
@@ -193,6 +197,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_build = sub.add_parser("build", help="aggregate, analyse and export")
     add_build_options(p_build)
+    p_build.add_argument("--photos", action="store_true",
+                         help="add freely licensed player photos from Wikidata and Wikimedia "
+                              "Commons (network; cached in .cache/photos; never fails the build)")
     p_build.set_defaults(func=cmd_build)
 
     p_wp = sub.add_parser("winprob", help="fit and validate the win-probability models")

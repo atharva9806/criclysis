@@ -47,7 +47,7 @@ export default async function HeadToHeadPage({ params, searchParams }: Props) {
   const [{ teamId, oppId }, sp] = await Promise.all([params, searchParams]);
   // Both teams must exist before anything streams, so a bogus pair is a real 404.
   const [team, opp, meta] = await Promise.all([findTeam(teamId), findTeam(oppId), getDatasetMeta()]);
-  if (!team || !opp) notFound();
+  if (!team || !opp || teamId === oppId) notFound();
   // Formats both teams have played; default to the requested one, else the first shared one.
   const shared = FMTS.filter((f) => team.formats[f] && opp.formats[f]);
   const wanted = fmtParam(sp.f);

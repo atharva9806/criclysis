@@ -127,9 +127,9 @@ function ModelCard({ m }: { m: WinModelSummary }) {
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
         <Stat label="Chase Brier" value={brier(m.chase.brier)} sample={`vs ${brier(m.chase.baselineBrier)} baseline (skill ${skill(m.chase.skill)}) · ${int(m.chase.states)} ball states`} />
-        <Stat label="First-innings Brier" value={brier(m.firstInnings.brier)} sample={`vs ${brier(m.firstInnings.baselineBrier)} baseline (skill ${skill(m.firstInnings.skill)}) · ${int(m.firstInnings.states)} ball states`} />
+        <Stat label="First-innings Brier" value={brier(m.firstInnings.brier)} sample={`vs ${brier(m.firstInnings.baselineBrier)} baseline (skill ${skill(m.firstInnings.skill)}) · ${int(m.firstInnings.states)} ball states (every 6th)`} />
         <Stat label="Par" value={int(m.par)} unit="runs" sample={`format par; model fitted on ${int(m.matches)} matches`} />
-        <Stat label="Recency half-life" value={m.halfLifeYears == null ? "–" : num(m.halfLifeYears, 0)} unit={m.halfLifeYears == null ? undefined : "years"} sample="how fast older matches lose weight" />
+        <Stat label="Recency half-life" value={m.halfLifeYears == null ? "None" : num(m.halfLifeYears, 0)} unit={m.halfLifeYears == null ? undefined : "years"} sample={m.halfLifeYears == null ? "every match weighted equally; the search found no gain from favouring recent ones" : "how fast older matches lose weight"} />
       </dl>
       <div className="mt-6">
         <p className="label">Calibration on the holdout</p>
@@ -437,8 +437,8 @@ export default async function MethodPage() {
         <h3 className="mb-2 mt-8 font-semibold">Validation on matches the model never saw</h3>
         <Prose>
           <p>
-            Each model is trained on matches before {holdouts.length === 1 ? date(holdouts[0]) : "its holdout date"} and scored on every ball state of the
-            later matches. The <strong>Brier score</strong> is the mean squared error of the probability, so lower is better. The <strong>baseline</strong> is
+            Each model is trained on matches before {holdouts.length === 1 ? date(holdouts[0]) : "its holdout date"} and scored on the
+            later matches: every ball state of each chase, and every sixth ball state of each first innings. The <strong>Brier score</strong> is the mean squared error of the probability, so lower is better. The <strong>baseline</strong> is
             a constant forecast: how often the side batting first, or chasing, won in the training matches. <strong>Skill</strong> is 1 &minus; Brier &divide;
             baseline. The published model is then refitted on every match, including the holdout.
           </p>

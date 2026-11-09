@@ -97,14 +97,14 @@ async function PlayerMode({ p, fmt, meta }: { p?: string; fmt?: ReturnType<typeo
 
   return (
     <>
-      <form method="get" action="/strategy" className="card mt-6 grid grid-cols-1 items-end gap-3 p-4 min-[480px]:grid-cols-2 md:flex md:flex-wrap">
+      <form method="get" action="/strategy" className="card mt-6 grid grid-cols-2 items-end gap-3 p-4 md:flex md:flex-wrap">
         <input type="hidden" name="mode" value="player" />
-        <label className="field min-w-56 flex-1">
+        <label className="field col-span-2 min-w-56 flex-1">
           Player
           <input name="p" defaultValue={slug ?? ""} placeholder="Name or profile id" className="input" />
         </label>
         <Select name="f" label="Format" value={fmt} options={[["", "Main format"], ["test", "Test"], ["odi", "ODI"], ["t20i", "T20I"]]} />
-        <button type="submit" className="btn-primary">Build dossier</button>
+        <button type="submit" className="btn-primary col-span-2 md:col-span-1">Build dossier</button>
       </form>
 
       {!slug ? (
@@ -178,12 +178,12 @@ async function TeamMode({ team, opp, fmt, minMatches }: { team?: string; opp?: s
 
   return (
     <>
-      <form method="get" action="/strategy" className="card mt-6 grid grid-cols-1 items-end gap-3 p-4 min-[480px]:grid-cols-2 md:flex md:flex-wrap">
+      <form method="get" action="/strategy" className="card mt-6 grid grid-cols-2 items-end gap-3 p-4 md:flex md:flex-wrap">
         <input type="hidden" name="mode" value="team" />
         <Select name="team" label="Team" value={team} options={[["", "Choose a team"], ...options]} />
         <Select name="opp" label="Opponent" value={opp} options={[["", "Choose an opponent"], ...options]} />
         <Select name="f" label="Format" value={f} options={[["test", "Test"], ["odi", "ODI"], ["t20i", "T20I"]]} />
-        <button type="submit" className="btn-primary">Build plan</button>
+        <button type="submit" className="btn-primary col-span-2 md:col-span-1">Build plan</button>
       </form>
       {!team || !opp ? (
         <div className="mt-6"><Muted>Choose two teams of the same gender to see their records against each other and the opponent&apos;s patterns.</Muted></div>

@@ -149,7 +149,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
           </Section>
           <Section
             title="Percentile profiles"
-            sub={A.summary!.formatKey && B.summary!.formatKey ? `${formatKeyLabel(A.summary!.formatKey)} and ${formatKeyLabel(B.summary!.formatKey)} cohorts.` : undefined}
+            sub={A.summary!.formatKey && B.summary!.formatKey ? (A.summary!.formatKey === B.summary!.formatKey ? `Both measured against the ${formatKeyLabel(A.summary!.formatKey)} cohort; 50 is the median.` : `${formatKeyLabel(A.summary!.formatKey)} and ${formatKeyLabel(B.summary!.formatKey)} cohorts.`) : undefined}
           >
             {axes.length ? (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

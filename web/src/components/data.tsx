@@ -344,9 +344,9 @@ export function Select({ name, label, value, options, className = "" }: { name: 
 /** A filter bar: a GET form in a card that wraps on narrow screens. */
 export function FilterForm({ action, children, label }: { action: string; children: ReactNode; label: string }) {
   return (
-    <form method="get" action={action} aria-label={label} className="card grid grid-cols-1 items-end gap-3 p-4 min-[480px]:grid-cols-2 md:flex md:flex-wrap">
+    <form method="get" action={action} aria-label={label} className="card grid grid-cols-2 items-end gap-3 p-4 md:flex md:flex-wrap">
       {children}
-      <button type="submit" className="btn-primary min-[480px]:col-span-2 md:col-span-1">
+      <button type="submit" className="btn-primary col-span-2 md:col-span-1">
         Apply filters
       </button>
     </form>

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
 
 type Props = {
   error: unknown;
@@ -15,9 +14,7 @@ type Props = {
 
 /** Shared body for every route segment's error.tsx. */
 export function RouteError({ error, retry, reset, what = "this page" }: Props) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  // React already reports the error to the console; the digest below matches the server log.
   const digest = error instanceof Error && "digest" in error ? String((error as Error & { digest?: string }).digest ?? "") : "";
   return (
     <div className="page">

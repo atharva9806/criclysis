@@ -113,7 +113,7 @@ export default async function PlayersPage({ searchParams }: { searchParams: Prom
 
       <FilterForm action="/players" label="Filter players">
         {q.gender === "female" ? <input type="hidden" name="gender" value="women" /> : null}
-        <label className="field min-[480px]:col-span-2 md:min-w-56 md:flex-1">
+        <label className="field col-span-2 md:min-w-56 md:flex-1">
           Name
           <input name="q" type="search" defaultValue={q.search ?? ""} placeholder="e.g. Kohli" className="input" autoComplete="off" />
         </label>

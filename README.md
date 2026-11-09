@@ -11,7 +11,7 @@ every day, so new internationals appear within about a day. "Live" here means
 that daily refresh plus a replay engine; there is no live-score API, no API
 key and no paid service.
 
-<!-- TODO: live link -->
+**Live site: [criclysis.vercel.app](https://criclysis.vercel.app)**
 
 As of the 9 Nov 2026 build (refreshed daily): **10,009 matches**, **5,329
 player profiles**, **201 teams** and **382 venues**, with data through
@@ -19,9 +19,8 @@ player profiles**, **201 teams** and **382 venues**, with data through
 
 ## Screenshots
 
-> These come from a local production build on the **110-match development
-> fixture** (`fixtures/data-out`), not the full dataset, so the numbers in them
-> differ from the live site. For example, Virat Kohli shows 14 ODIs here.
+> Taken from the live site on 9 Nov 2026, on the full dataset (data through
+> 2 Nov 2026). The numbers on the site move as the daily refresh adds matches.
 
 | | |
 |---|---|

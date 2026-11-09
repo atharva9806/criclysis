@@ -221,6 +221,15 @@ async function loadPlayerProfile(slug: string, fmt?: Fmt): Promise<PlayerProfile
   };
 }
 
+/**
+ * The player's header and career rows only (two indexed queries): the cheap
+ * existence check a profile page runs before it streams the full profile.
+ */
+async function loadPlayerHeader(slug: string): Promise<{ player: PlayerHeader; careers: CareerRow[] } | null> {
+  const base = await playerWithCareers(slug);
+  return base ? { player: toPlayerHeader(base.player), careers: base.careers } : null;
+}
+
 async function loadPlayerSummary(slug: string, fmt?: Fmt): Promise<PlayerSummary | null> {
   const base = await playerWithCareers(slug);
   if (!base) return null;
@@ -389,6 +398,7 @@ async function loadPlayerNames(slugs: string[]): Promise<{ slug: string; name: s
 
 export const getPlayerProfile = cached("getPlayerProfile", loadPlayerProfile);
 export const getPlayerSummary = cached("getPlayerSummary", loadPlayerSummary);
+export const getPlayerHeader = cached("getPlayerHeader", loadPlayerHeader);
 export const listPlayers = cached("listPlayers", loadPlayers);
 export const getLeaders = cached("getLeaders", loadLeaders);
 export const getPlayerNames = cached("getPlayerNames", loadPlayerNames);

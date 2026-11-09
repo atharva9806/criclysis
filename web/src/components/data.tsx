@@ -2,53 +2,115 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { MatchRow, SplitRow } from "@/lib/contract/db";
-import type { Fmt, Record5 } from "@/lib/contract/pipeline";
-import { DASH, FORMAT_LABEL, date, decided, genderWord, int, num, pct, winPct } from "@/lib/format";
-import { pageNav } from "@/lib/params";
+import type { Fmt, Gender, Record5 } from "@/lib/contract/pipeline";
+import { DASH, FORMAT_LABEL, date, decided, formatKeyLabel, int, num, pct, winPct } from "@/lib/format";
+import { pageNav, qs } from "@/lib/params";
 import { DataCredit } from "./DataCredit";
+import { eventLine, teamScores } from "./replay/ResultCard";
+import { Badge, EmptyState, SectionHeader, SegmentedLinks } from "./ui";
 
-export function PageHeader({ eyebrow, title, sub, children }: { eyebrow?: string; title: string; sub?: ReactNode; children?: ReactNode }) {
+export function PageHeader({
+  eyebrow,
+  title,
+  sub,
+  children,
+  actions,
+  back,
+  credit = true,
+}: {
+  eyebrow?: ReactNode;
+  title: ReactNode;
+  sub?: ReactNode;
+  children?: ReactNode;
+  /** Controls shown beside the title on wide screens (e.g. the Men/Women toggle). */
+  actions?: ReactNode;
+  /** A link back up the hierarchy. */
+  back?: { href: string; label: string };
+  credit?: boolean;
+}) {
   return (
     <header className="mb-8">
-      {eyebrow && <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#0071e3]">{eyebrow}</p>}
-      <h1 className="headline text-3xl md:text-5xl">{title}</h1>
-      {sub ? <div className="mt-3 max-w-3xl text-[17px] text-[#6e6e73]">{sub}</div> : null}
-      {children}
-      <DataCredit className="mt-3" />
+      {back ? (
+        <Link href={back.href} className="-ml-1 mb-3 inline-flex min-h-9 items-center gap-1 rounded-control px-1 text-sm font-medium text-muted hover:text-fg">
+          <span aria-hidden="true">←</span> {back.label}
+        </Link>
+      ) : null}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0 max-w-3xl">
+          {eyebrow ? <p className="eyebrow mb-2">{eyebrow}</p> : null}
+          <h1 className="text-title text-balance">{title}</h1>
+          {sub ? <div className="mt-3 text-base leading-relaxed text-muted">{sub}</div> : null}
+          {children}
+          {credit ? <DataCredit className="mt-3" /> : null}
+        </div>
+        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+      </div>
     </header>
   );
 }
 
-export function Section({ title, sub, children, id }: { title: string; sub?: ReactNode; children: ReactNode; id?: string }) {
+export function Section({ title, sub, children, id, actions }: { title: ReactNode; sub?: ReactNode; children: ReactNode; id?: string; actions?: ReactNode }) {
+  const headingId = id ? `${id}-title` : undefined;
   return (
-    <section id={id} className="mt-12">
-      <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
-      {sub ? <p className="mt-1 text-sm text-[#6e6e73]">{sub}</p> : null}
-      <div className="mt-4">{children}</div>
+    <section id={id} aria-labelledby={headingId} className="mt-12 first:mt-0">
+      <SectionHeader id={headingId} title={title} sub={sub} actions={actions} />
+      {children}
     </section>
   );
 }
 
-/** Links that switch a page between formats, keeping the other params. */
-export function FormatTabs({ formats, active, href }: { formats: Fmt[]; active: Fmt | null; href: (f: Fmt) => string }) {
-  if (formats.length < 2) return null;
+/** Men/Women in the URL (`?gender=women`; men is the default and has no param). */
+export function GenderToggle({ gender, href }: { gender: Gender; href: (g: Gender) => string }) {
   return (
-    <nav className="segment mt-4" aria-label="Format">
-      {formats.map((f) => (
-        <Link key={f} href={href(f)} data-active={f === active} aria-current={f === active ? "page" : undefined} className="rounded-full px-4 py-1.5 font-medium text-[#1d1d1f]/70 data-[active=true]:bg-white data-[active=true]:text-[#1d1d1f] data-[active=true]:shadow-sm">
-          {FORMAT_LABEL[f]}
-        </Link>
-      ))}
-    </nav>
+    <SegmentedLinks
+      label="Men's or women's cricket"
+      items={[
+        { key: "male", href: href("male"), label: "Men", active: gender === "male" },
+        { key: "female", href: href("female"), label: "Women", active: gender === "female" },
+      ]}
+    />
   );
 }
 
-/** A table that scrolls sideways on narrow screens instead of the page. */
-export function TableWrap({ children, caption }: { children: ReactNode; caption?: string }) {
+/** The URL of `path` with the gender param set (dropped for men) and other params kept. */
+export function genderHref(path: string, g: Gender, keep: Record<string, string | number | undefined | null> = {}): string {
+  return `${path}${qs({ ...keep, gender: g === "female" ? "women" : undefined })}`;
+}
+
+/** The designed empty state for a gender that has no data in this build. */
+export function NoGenderData({ gender, what, menHref }: { gender: Gender; what: string; menHref: string }) {
+  const word = gender === "female" ? "women's" : "men's";
   return (
-    <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="table-apple w-full text-left">
+    <EmptyState
+      title={`No ${word} ${what} in this build`}
+      action={
+        gender === "female" ? (
+          <Link href={menHref} className="btn-secondary">
+            Show men&apos;s cricket
+          </Link>
+        ) : null
+      }
+    >
+      The dataset loaded here has no {word} internationals yet. They appear after the daily Cricsheet refresh imports them.
+    </EmptyState>
+  );
+}
+
+/** Links that switch a page between formats, keeping the other params. */
+export function FormatTabs({ formats, active, href, label = "Format" }: { formats: Fmt[]; active: Fmt | null; href: (f: Fmt) => string; label?: string }) {
+  if (formats.length < 2) return null;
+  return <SegmentedLinks label={label} items={formats.map((f) => ({ key: f, href: href(f), label: FORMAT_LABEL[f], active: f === active }))} />;
+}
+
+/**
+ * A table in a card that scrolls sideways inside its own container on narrow
+ * screens, never the page. The first column (the row label) stays in view.
+ */
+export function TableWrap({ children, caption, sticky = true, className = "" }: { children: ReactNode; caption?: string; sticky?: boolean; className?: string }) {
+  return (
+    <div className={`card overflow-hidden ${className}`}>
+      <div className="table-scroll">
+        <table className={`data-table ${sticky ? "sticky-first" : ""}`}>
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           {children}
         </table>
@@ -57,55 +119,90 @@ export function TableWrap({ children, caption }: { children: ReactNode; caption?
   );
 }
 
+/** A quiet note in place of a table or section with nothing to show. */
 export function Muted({ children }: { children: ReactNode }) {
-  return <p className="card p-5 text-sm text-[#6e6e73]">{children}</p>;
+  return <p className="rounded-card border border-dashed border-line-strong bg-surface px-5 py-4 text-sm leading-relaxed text-muted">{children}</p>;
 }
 
-function innings(m: MatchRow) {
-  return m.innings.map((i, k) => (
-    <span key={k} className="tabular-nums">
-      {i.runs}
-      {i.wickets < 10 ? `/${i.wickets}` : ""}
-      {i.declared ? "d" : ""} <span className="text-[#6e6e73]">({i.overs} ov)</span>
-    </span>
-  ));
-}
-
-/** One result: teams, innings totals, the official result text, date and event. */
+/** One result: teams, innings totals in batting order, the official result text, date, event and venue. */
 export function MatchCard({ m }: { m: MatchRow }) {
-  const byTeam = (teamId: string) => m.innings.filter((i) => i.teamId === teamId);
+  const event = eventLine(m);
+  const name = `${m.team1} v ${m.team2}, ${date(m.endDate)}`;
   return (
-    <article className="card flex h-full flex-col p-5">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73]">
-        {genderWord(m.gender)}&apos;s {FORMAT_LABEL[m.format]} · {date(m.endDate)}
-      </p>
-      <ul className="mt-2 space-y-1 text-sm">
-        {[
-          [m.team1Id, m.team1],
-          [m.team2Id, m.team2],
-        ].map(([id, name]) => (
-          <li key={id} className="flex items-baseline justify-between gap-3">
-            <span className={`font-medium ${m.result.winnerId === id ? "text-[#1d1d1f]" : "text-[#1d1d1f]/70"}`}>{name}</span>
-            <span className="flex flex-wrap justify-end gap-x-2 text-right">
-              {byTeam(id).length ? innings({ ...m, innings: byTeam(id) }) : <span className="text-[#6e6e73]">{DASH}</span>}
+    <article className="card flex h-full flex-col p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="label">
+          {formatKeyLabel(m.formatKey)} · <time dateTime={m.endDate}>{date(m.endDate)}</time>
+        </p>
+        {m.eventStage === "Final" ? <Badge tone="accent">Final</Badge> : null}
+      </div>
+      <h3 className="mt-3 space-y-1.5">
+        {teamScores(m).map((t) => {
+          const won = m.result.winner === t.team;
+          return (
+            <span key={t.team} className="flex items-baseline justify-between gap-3">
+              <span className={`min-w-0 truncate ${won ? "font-semibold text-fg" : "font-medium text-muted"}`}>
+                {t.team}
+                {won ? <span className="sr-only"> (won)</span> : null}
+              </span>
+              <span className={`shrink-0 text-right text-sm tabular-nums ${won ? "font-semibold" : ""}`}>{t.score || DASH}</span>
             </span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 text-sm font-medium">{m.result.text}</p>
-      <p className="mt-1 text-xs text-[#6e6e73]">
-        {[m.eventName, m.eventStage].filter(Boolean).join(", ") || m.season} · {m.venue}
-      </p>
-      <p className="mt-auto flex gap-4 pt-3 text-sm font-medium">
-        <Link href={`/matches/${m.id}`} className="text-[#0071e3] hover:underline">Scorecard</Link>
-        {m.hasReplay ? <Link href={`/live/${m.id}`} className="text-[#0071e3] hover:underline">Replay</Link> : null}
+          );
+        })}
+      </h3>
+      <p className="mt-3 text-sm font-medium">{m.result.text || "Result not recorded"}</p>
+      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{[event || m.season, m.venue].filter(Boolean).join(" · ")}</p>
+      <p className="-mx-2 mt-auto flex flex-wrap gap-1 pt-3">
+        <Link href={`/matches/${m.id}`} className="btn-ghost px-2">
+          Scorecard<span className="sr-only">: {name}</span>
+        </Link>
+        {m.hasReplay ? (
+          <Link href={`/live/${m.id}`} className="btn-ghost px-2">
+            Replay<span className="sr-only">: {name}</span>
+          </Link>
+        ) : null}
       </p>
     </article>
   );
 }
 
-export function MatchGrid({ matches, empty }: { matches: MatchRow[]; empty: string }) {
-  if (!matches.length) return <Muted>{empty}</Muted>;
+/** A whole-card link into a replay. */
+export function ReplayCard({ m }: { m: MatchRow }) {
+  const event = eventLine(m);
+  return (
+    <Link href={`/live/${m.id}`} className="card-link group flex h-full flex-col p-4 sm:p-5">
+      <span className="flex items-start justify-between gap-2">
+        <span className="label">
+          {formatKeyLabel(m.formatKey)} · <time dateTime={m.endDate}>{date(m.endDate)}</time>
+        </span>
+        {m.eventStage === "Final" ? <Badge tone="accent">Final</Badge> : null}
+      </span>
+      <span className="mt-3 block font-semibold">
+        {m.team1} v {m.team2}
+      </span>
+      {event ? <span className="mt-0.5 block truncate text-xs text-muted">{event}</span> : null}
+      <span className="mt-3 block text-sm text-muted">{m.result.text}</span>
+      <span className="mt-auto inline-flex items-center gap-1 pt-4 text-sm font-semibold text-accent">
+        Replay ball by ball <span aria-hidden="true" className="transition-transform motion-safe:group-hover:translate-x-0.5">→</span>
+      </span>
+    </Link>
+  );
+}
+
+export function ReplayGrid({ matches, cols = 3 }: { matches: MatchRow[]; cols?: 3 | 4 }) {
+  return (
+    <ul className={`grid gap-4 sm:grid-cols-2 ${cols === 4 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
+      {matches.map((m) => (
+        <li key={m.id}>
+          <ReplayCard m={m} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function MatchGrid({ matches, empty }: { matches: MatchRow[]; empty: ReactNode }) {
+  if (!matches.length) return typeof empty === "string" ? <Muted>{empty}</Muted> : <>{empty}</>;
   return (
     <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {matches.map((m) => (
@@ -123,41 +220,43 @@ export function SplitTable({
   label = (r) => r.label ?? r.subject,
   subjectHeader,
   empty,
+  caption,
 }: {
   rows: SplitRow[];
   label?: (r: SplitRow) => ReactNode;
   subjectHeader: string;
   empty: string;
+  caption?: string;
 }) {
   if (!rows.length) return <Muted>{empty}</Muted>;
   const bowling = rows[0].discipline === "bowling";
   return (
-    <TableWrap>
+    <TableWrap caption={caption ?? subjectHeader}>
       <thead>
         <tr>
           <th scope="col">{subjectHeader}</th>
-          <th scope="col" className="text-right">Balls</th>
-          <th scope="col" className="text-right">Runs</th>
-          <th scope="col" className="text-right">{bowling ? "Wkts" : "Outs"}</th>
-          <th scope="col" className="text-right">Avg</th>
-          {bowling ? <th scope="col" className="text-right">Econ</th> : null}
-          <th scope="col" className="text-right">{bowling ? "Balls/wkt" : "SR"}</th>
-          <th scope="col" className="text-right">Dot %</th>
-          <th scope="col" className="text-right">4s+6s %</th>
+          <th scope="col" className="num">Balls</th>
+          <th scope="col" className="num">Runs</th>
+          <th scope="col" className="num">{bowling ? "Wkts" : "Outs"}</th>
+          <th scope="col" className="num">Avg</th>
+          {bowling ? <th scope="col" className="num">Econ</th> : null}
+          <th scope="col" className="num">{bowling ? "Balls/wkt" : "SR"}</th>
+          <th scope="col" className="num">Dot %</th>
+          <th scope="col" className="num">4s+6s %</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((r) => (
           <tr key={`${r.dimension}|${r.subject}`}>
-            <td className="font-medium">{label(r)}</td>
-            <td className="text-right tabular-nums">{int(r.balls)}</td>
-            <td className="text-right tabular-nums">{int(r.runs)}</td>
-            <td className="text-right tabular-nums">{int(bowling ? r.wickets : r.outs)}</td>
-            <td className="text-right tabular-nums">{num(r.average)}</td>
-            {bowling ? <td className="text-right tabular-nums">{num(r.economy)}</td> : null}
-            <td className="text-right tabular-nums">{num(r.strikeRate, bowling ? 1 : 2)}</td>
-            <td className="text-right tabular-nums">{pct(r.dotPct)}</td>
-            <td className="text-right tabular-nums">{pct(r.boundaryPct)}</td>
+            <th scope="row">{label(r)}</th>
+            <td className="num">{int(r.balls)}</td>
+            <td className="num">{int(r.runs)}</td>
+            <td className="num">{int(bowling ? r.wickets : r.outs)}</td>
+            <td className="num">{num(r.average)}</td>
+            {bowling ? <td className="num">{num(r.economy)}</td> : null}
+            <td className="num">{num(r.strikeRate, bowling ? 1 : 2)}</td>
+            <td className="num">{pct(r.dotPct)}</td>
+            <td className="num">{pct(r.boundaryPct)}</td>
           </tr>
         ))}
       </tbody>
@@ -167,16 +266,18 @@ export function SplitTable({
 
 /** W/L/T/D/NR cells; the win percentage is hidden below the team threshold of decided matches (§4.4). */
 export function RecordCells({ r, minMatches }: { r: Record5; minMatches: number }) {
+  const hidden = decided(r) < minMatches;
   return (
     <>
-      <td className="text-right tabular-nums">{int(r.matches)}</td>
-      <td className="text-right tabular-nums">{int(r.won)}</td>
-      <td className="text-right tabular-nums">{int(r.lost)}</td>
-      <td className="text-right tabular-nums">{int(r.tied)}</td>
-      <td className="text-right tabular-nums">{int(r.drawn)}</td>
-      <td className="text-right tabular-nums">{int(r.noResult)}</td>
-      <td className="text-right tabular-nums" title={decided(r) < minMatches ? `Shown from ${minMatches} decided matches` : undefined}>
+      <td className="num">{int(r.matches)}</td>
+      <td className="num">{int(r.won)}</td>
+      <td className="num">{int(r.lost)}</td>
+      <td className="num">{int(r.tied)}</td>
+      <td className="num">{int(r.drawn)}</td>
+      <td className="num">{int(r.noResult)}</td>
+      <td className="num font-semibold" title={hidden ? `Shown from ${minMatches} decided matches` : undefined}>
         {winPct(r, minMatches)}
+        {hidden && r.matches ? <span className="sr-only"> (fewer than {minMatches} decided matches)</span> : null}
       </td>
     </>
   );
@@ -185,14 +286,14 @@ export function RecordCells({ r, minMatches }: { r: Record5; minMatches: number 
 export function RecordHeads({ first }: { first: string }) {
   return (
     <tr>
-      <th scope="col">{first}</th>
-      <th scope="col" className="text-right">Mat</th>
-      <th scope="col" className="text-right">Won</th>
-      <th scope="col" className="text-right">Lost</th>
-      <th scope="col" className="text-right">Tied</th>
-      <th scope="col" className="text-right">Drawn</th>
-      <th scope="col" className="text-right">NR</th>
-      <th scope="col" className="text-right">Win %</th>
+      <th scope="col">{first || <span className="sr-only">Split</span>}</th>
+      <th scope="col" className="num">Mat</th>
+      <th scope="col" className="num">Won</th>
+      <th scope="col" className="num">Lost</th>
+      <th scope="col" className="num">Tied</th>
+      <th scope="col" className="num">Drawn</th>
+      <th scope="col" className="num">NR</th>
+      <th scope="col" className="num">Win %</th>
     </tr>
   );
 }
@@ -201,22 +302,34 @@ export function Pagination({ page, pageSize, total, href }: { page: number; page
   const nav = pageNav(page, pageSize, total);
   if (nav.pages <= 1 && !nav.pastEnd) return null;
   return (
-    <nav className="mt-6 flex items-center justify-between text-sm" aria-label="Pages">
-      {nav.prev ? <Link className="btn-ghost px-0" href={href(nav.prev)}>← {nav.pastEnd ? "Last page" : "Previous"}</Link> : <span />}
-      <span className="text-[#6e6e73]">
+    <nav className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Pages">
+      {nav.prev ? (
+        <Link className="btn-secondary" href={href(nav.prev)} rel="prev">
+          <span aria-hidden="true">←</span> {nav.pastEnd ? "Last page" : "Previous"}
+        </Link>
+      ) : (
+        <span />
+      )}
+      <span className="text-muted" aria-current="page">
         {nav.pastEnd ? `Page ${page} is past the end (${nav.pages} ${nav.pages === 1 ? "page" : "pages"})` : `Page ${page} of ${nav.pages}`}
       </span>
-      {nav.next ? <Link className="btn-ghost px-0" href={href(nav.next)}>Next →</Link> : <span />}
+      {nav.next ? (
+        <Link className="btn-secondary" href={href(nav.next)} rel="next">
+          Next <span aria-hidden="true">→</span>
+        </Link>
+      ) : (
+        <span />
+      )}
     </nav>
   );
 }
 
 /** A labelled select for GET filter forms (works without JavaScript). */
-export function Select({ name, label, value, options }: { name: string; label: string; value: string | undefined; options: [string, string][] }) {
+export function Select({ name, label, value, options, className = "" }: { name: string; label: string; value: string | undefined; options: [string, string][]; className?: string }) {
   return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-[#6e6e73]">
+    <label className={`field ${className}`}>
       {label}
-      <select name={name} defaultValue={value ?? ""} className="rounded-full bg-[#e8e8ed] px-4 py-2.5 text-sm text-[#1d1d1f]">
+      <select name={name} defaultValue={value ?? ""} className="input pr-8">
         {options.map(([v, l]) => (
           <option key={v} value={v}>
             {l}
@@ -224,5 +337,17 @@ export function Select({ name, label, value, options }: { name: string; label: s
         ))}
       </select>
     </label>
+  );
+}
+
+/** A filter bar: a GET form in a card that wraps on narrow screens. */
+export function FilterForm({ action, children, label }: { action: string; children: ReactNode; label: string }) {
+  return (
+    <form method="get" action={action} aria-label={label} className="card grid grid-cols-1 items-end gap-3 p-4 min-[480px]:grid-cols-2 md:flex md:flex-wrap">
+      {children}
+      <button type="submit" className="btn-primary min-[480px]:col-span-2 md:col-span-1">
+        Apply filters
+      </button>
+    </form>
   );
 }

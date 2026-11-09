@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import MatchReport from "@/components/replay/MatchReport";
-import { eventLine, formatKeyLabel } from "@/components/replay/ResultCard";
+import { eventLine } from "@/components/replay/ResultCard";
 import { formatDate } from "@/components/replay/format";
-import { getDatasetMeta, getMatch, getReplay, getWinModel } from "@/lib/data";
+import type { MatchRow } from "@/lib/contract/db";
+import { getMatch, getReplay, getWinModel } from "@/lib/data";
+import { formatKeyLabel } from "@/lib/format";
 import { withMatchFacts } from "@/lib/replay/engine";
 import { slimModel } from "@/lib/winprob/model";
+import { PageHeader, genderHref } from "@/components/data";
+import { SectionSkeleton, TableSkeleton } from "@/components/Loading";
+import { Badge, EmptyState } from "@/components/ui";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -19,120 +25,140 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: `${match.team1} v ${match.team2}, ${match.endDate} · Criclysis`, description: match.result.text };
 }
 
+/** The scorecard, worm and win-probability curve, built from the stored replay (the slow part: gunzip and parse). */
+async function Report({ match }: { match: MatchRow }) {
+  const [stored, modelJson] = await Promise.all([
+    match.hasReplay ? getReplay(match.id) : Promise.resolve(null),
+    match.format === "test" ? Promise.resolve(null) : getWinModel(match.formatKey),
+  ]);
+  if (!stored) {
+    return (
+      <EmptyState title="No ball-by-ball record">
+        Cricsheet has no ball-by-ball record for this match, so there is no scorecard, worm or win-probability curve.
+      </EmptyState>
+    );
+  }
+  const replay = withMatchFacts(stored, match);
+  const model = modelJson ? slimModel(modelJson, { key: match.venueKey, name: match.venue }) : null;
+  return <MatchReport replay={replay} model={model} />;
+}
+
 export default async function MatchPage({ params }: Props) {
   const { id } = await params;
+  // Existence first, before any Suspense boundary streams, so an unknown id is a real 404.
   if (!validId(id)) notFound();
   const match = await getMatch(id);
   if (!match) notFound();
-  const [stored, meta, modelJson] = await Promise.all([
-    match.hasReplay ? getReplay(id) : Promise.resolve(null),
-    getDatasetMeta(),
-    match.format === "test" ? Promise.resolve(null) : getWinModel(match.formatKey),
-  ]);
-  const replay = stored ? withMatchFacts(stored, match) : null;
-  const model = modelJson ? slimModel(modelJson, { key: match.venueKey, name: match.venue }) : null;
   const event = eventLine(match);
   const dates = match.startDate === match.endDate ? formatDate(match.endDate) : `${formatDate(match.startDate)} to ${formatDate(match.endDate)}`;
   const toss = match.tossWinner ? `${match.tossWinner} won the toss and chose to ${match.tossDecision === "bat" ? "bat" : "field"}.` : null;
   const pom = match.playerOfMatch.map((p) => p.name).filter(Boolean);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <header>
-        <p className="text-xs text-[#6e6e73]">
-          {formatKeyLabel(match.format, match.gender)}
-          {event ? ` · ${event}` : ""}
-        </p>
-        <h1 className="headline mt-2 text-3xl sm:text-5xl">
-          {match.team1} v {match.team2}
-        </h1>
-        <p className="mt-2 text-sm text-[#6e6e73]">
-          {dates} · {match.venue}
-          {match.city && !match.venue.includes(match.city) ? `, ${match.city}` : ""}
-        </p>
-      </header>
+    <div className="page">
+      <PageHeader
+        back={{ href: genderHref("/matches", match.gender), label: "All matches" }}
+        eyebrow={[formatKeyLabel(match.formatKey), event].filter(Boolean).join(" · ")}
+        title={`${match.team1} v ${match.team2}`}
+        sub={
+          <>
+            <time dateTime={match.endDate}>{dates}</time> · {match.venue}
+            {match.city && !match.venue.includes(match.city) ? `, ${match.city}` : ""}
+          </>
+        }
+      />
 
-      <section aria-labelledby="result-title" className="card mt-6 p-5 sm:p-6">
-        <h2 id="result-title" className="text-lg font-semibold">
-          {match.result.text || "Result not recorded"}
-        </h2>
-        <dl className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-          {toss && (
+      <section aria-labelledby="result-title" className="card p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="label">Result</p>
+            <h2 id="result-title" className="mt-1 text-heading">
+              {match.result.text || "Result not recorded"}
+            </h2>
+          </div>
+          {match.result.method ? <Badge tone="warning">{match.result.method}</Badge> : null}
+        </div>
+        <dl className="mt-4 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-3">
+          {toss ? (
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-[#6e6e73]">Toss</dt>
-              <dd>{toss}</dd>
+              <dt className="label">Toss</dt>
+              <dd className="mt-0.5">{toss}</dd>
             </div>
-          )}
-          {pom.length > 0 && (
+          ) : null}
+          {pom.length > 0 ? (
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-[#6e6e73]">Player of the match</dt>
-              <dd>{pom.join(", ")}</dd>
+              <dt className="label">Player of the match</dt>
+              <dd className="mt-0.5">{pom.join(", ")}</dd>
             </div>
-          )}
-          {match.scheduledOvers != null && (
+          ) : null}
+          {match.scheduledOvers != null ? (
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-[#6e6e73]">Scheduled overs</dt>
-              <dd>{match.scheduledOvers} a side</dd>
+              <dt className="label">Scheduled overs</dt>
+              <dd className="mt-0.5">{match.scheduledOvers} a side</dd>
             </div>
-          )}
+          ) : null}
         </dl>
-        {match.innings.length > 0 && (
-          <table className="mt-4 w-full text-sm">
-            <caption className="sr-only">Innings totals</caption>
-            <thead>
-              <tr className="border-b border-black/5 text-left text-[11px] uppercase tracking-wider text-[#6e6e73]">
-                <th scope="col" className="py-2 font-semibold">Innings</th>
-                <th scope="col" className="py-2 text-right font-semibold">Score</th>
-                <th scope="col" className="py-2 text-right font-semibold">Overs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {match.innings.map((inn, i) => (
-                <tr key={i} className="border-b border-black/5 last:border-0">
-                  <th scope="row" className="py-2 text-left font-medium">
-                    {inn.team}
-                    {match.format === "test" ? <span className="text-[#6e6e73]"> ({i + 1})</span> : null}
-                    {inn.target ? <span className="block text-xs font-normal text-[#6e6e73]">Target {inn.target.runs}{inn.target.overs ? ` from ${inn.target.overs} overs` : ""}</span> : null}
+        {match.innings.length > 0 ? (
+          <div className="table-scroll mt-5 rounded-control border border-line">
+            <table className="data-table">
+              <caption className="sr-only">Innings totals</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Innings</th>
+                  <th scope="col" className="num">
+                    Score
                   </th>
-                  <td className="py-2 text-right tabular-nums">
-                    {inn.runs}
-                    {inn.wickets >= 10 ? "" : `/${inn.wickets}`}
-                    {inn.declared ? "d" : ""}
-                  </td>
-                  <td className="py-2 text-right tabular-nums">{inn.overs}</td>
+                  <th scope="col" className="num">
+                    Overs
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {replay && (
-          <p className="mt-4">
+              </thead>
+              <tbody>
+                {match.innings.map((inn, i) => (
+                  <tr key={i}>
+                    <th scope="row">
+                      {inn.team}
+                      {match.format === "test" ? <span className="text-muted"> ({i + 1})</span> : null}
+                      {inn.target ? (
+                        <span className="block text-xs font-normal text-muted">
+                          Target {inn.target.runs}
+                          {inn.target.overs ? ` from ${inn.target.overs} overs` : ""}
+                        </span>
+                      ) : null}
+                    </th>
+                    <td className="num font-semibold">
+                      {inn.runs}
+                      {inn.wickets >= 10 ? "" : `/${inn.wickets}`}
+                      {inn.declared ? "d" : ""}
+                    </td>
+                    <td className="num">{inn.overs}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {match.hasReplay ? (
+          <p className="mt-5">
             <Link href={`/live/${match.id}`} className="btn-primary">
-              Replay ball by ball
+              Replay ball by ball <span aria-hidden="true">→</span>
             </Link>
           </p>
-        )}
+        ) : null}
       </section>
 
-      <div className="mt-5">
-        {replay ? (
-          <MatchReport replay={replay} model={model} />
-        ) : (
-          <div className="card p-6 text-sm text-[#6e6e73]">Cricsheet has no ball-by-ball record for this match, so there is no scorecard, worm or win-probability curve.</div>
-        )}
+      <div className="mt-6">
+        <Suspense
+          fallback={
+            <div className="space-y-6">
+              <TableSkeleton label="Loading the scorecard" rows={11} cols={6} />
+              <SectionSkeleton label="Loading the charts" height="h-72" />
+            </div>
+          }
+        >
+          <Report match={match} />
+        </Suspense>
       </div>
-
-      <p className="mt-6 text-xs text-[#6e6e73]">
-        Data from{" "}
-        <a href="https://cricsheet.org" className="text-[#0071e3] hover:underline">
-          Cricsheet
-        </a>{" "}
-        (
-        <a href="https://creativecommons.org/licenses/by/4.0/" className="text-[#0071e3] hover:underline">
-          CC BY 4.0
-        </a>
-        ){meta ? `, matches up to ${formatDate(meta.dataAsOf)}` : ""}.
-      </p>
     </div>
   );
 }

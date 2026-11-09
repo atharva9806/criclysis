@@ -5,7 +5,7 @@ import { getLeaders, getPlayerSummary, listPlayers } from "@/lib/data";
 import { FORMAT_LABEL, formatKeyLabel, genderWord, int, num } from "@/lib/format";
 import { fmtParam, qs, str, type SearchParams } from "@/lib/params";
 import { Muted, PageHeader, Section, Select, TableWrap } from "@/components/data";
-import { AttributeRadar } from "@/components/charts/Charts";
+import { ChartFrame, PercentileRadar } from "@/components/charts/Charts";
 
 type Side = { query: string | undefined; summary: PlayerSummary | null; suggestions: PlayerListRow[] };
 
@@ -55,16 +55,16 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
 
   const sideForm = (s: Side, name: "a" | "b") => (
     <div className="card flex-1 p-5">
-      <label className="flex flex-col gap-1 text-xs font-medium text-[#6e6e73]">
+      <label className="field">
         Player {name.toUpperCase()}
-        <input name={name} defaultValue={s.summary?.player.slug ?? s.query ?? ""} placeholder="Name or profile id" className="rounded-full bg-[#e8e8ed] px-4 py-2.5 text-sm text-[#1d1d1f]" />
+        <input name={name} defaultValue={s.summary?.player.slug ?? s.query ?? ""} placeholder="Name or profile id" className="input" />
       </label>
       {s.summary ? (
         <div className="mt-4">
-          <Link href={`/players/${s.summary.player.slug}${qs({ f: fmt })}`} className="text-xl font-semibold hover:text-[#0071e3]">
+          <Link href={`/players/${s.summary.player.slug}${qs({ f: fmt })}`} className="link-quiet text-xl font-semibold">
             {s.summary.player.name}
           </Link>
-          <p className="text-sm text-[#6e6e73]">
+          <p className="text-sm text-muted">
             {genderWord(s.summary.player.gender)} · {s.summary.player.teams.join(", ") || s.summary.player.country}
           </p>
         </div>
@@ -72,20 +72,20 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
         <div className="mt-4 text-sm">
           {s.suggestions.length ? (
             <>
-              <p className="text-[#6e6e73]">Did you mean:</p>
+              <p className="text-muted">Did you mean:</p>
               <ul className="mt-1 space-y-1">
                 {s.suggestions.map((r) => (
                   <li key={r.slug}>
-                    <Link className="text-[#0071e3] hover:underline" href={`/compare${qs({ a: name === "a" ? r.slug : a, b: name === "b" ? r.slug : b, f: fmt })}`}>
+                    <Link className="link" href={`/compare${qs({ a: name === "a" ? r.slug : a, b: name === "b" ? r.slug : b, f: fmt })}`}>
                       {r.name}
                     </Link>{" "}
-                    <span className="text-[#6e6e73]">{r.teams.join(", ")}</span>
+                    <span className="text-muted">{r.teams.join(", ")}</span>
                   </li>
                 ))}
               </ul>
             </>
           ) : (
-            <p className="text-[#6e6e73]">No player matches “{s.query}”.</p>
+            <p className="text-muted">No player matches “{s.query}”.</p>
           )}
         </div>
       ) : null}
@@ -93,21 +93,21 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
+    <div className="page">
       <PageHeader eyebrow="Compare" title="Two players, side by side." sub="Career records in one format, and where each ranks among comparable players." />
-      <form method="get" action="/compare" className="flex flex-col gap-4 md:flex-row md:items-start">
+      <form method="get" action="/compare" aria-label="Choose two players" className="flex flex-col gap-4 md:flex-row md:items-start">
         {sideForm(A, "a")}
         {sideForm(B, "b")}
-        <div className="flex items-end gap-3 md:flex-col md:items-stretch">
+        <div className="flex flex-wrap items-end gap-3 md:flex-col md:items-stretch">
           <Select name="f" label="Format" value={fmt} options={[["test", "Test"], ["odi", "ODI"], ["t20i", "T20I"]]} />
-          <button type="submit" className="btn-primary justify-center">Compare</button>
+          <button type="submit" className="btn-primary">Compare</button>
         </div>
       </form>
 
       {both ? (
         <>
           {A.summary!.player.gender !== B.summary!.player.gender ? (
-            <p className="mt-6 rounded-2xl bg-[#ff9500]/10 p-4 text-sm text-[#c93400]">
+            <p role="note" className="mt-6 rounded-card bg-warning-soft p-4 text-sm text-warning">
               These players are measured against different cohorts (men&apos;s and women&apos;s cricket), so their percentiles are not directly comparable.
             </p>
           ) : null}
@@ -117,8 +117,14 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
                 <thead>
                   <tr>
                     <th scope="col">Measure</th>
-                    <th scope="col" className="text-right text-[#0071e3]">{A.summary!.player.name}</th>
-                    <th scope="col" className="text-right text-[#ff375f]">{B.summary!.player.name}</th>
+                    <th scope="col" className="num">
+                      <span aria-hidden="true" className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: "var(--chart-1)" }} />
+                      {A.summary!.player.name}
+                    </th>
+                    <th scope="col" className="num">
+                      <span aria-hidden="true" className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: "var(--chart-2)" }} />
+                      {B.summary!.player.name}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -129,7 +135,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
                     const better = (x: number | null, y: number | null) => x !== null && y !== null && (r.lowerIsBetter ? x < y : x > y);
                     return (
                       <tr key={r.label}>
-                        <th scope="row" className="font-normal">{r.label}</th>
+                        <th scope="row" className="!font-normal">{r.label}</th>
                         <td className={`text-right tabular-nums ${better(va, vb) ? "font-semibold" : ""}`}>{show(va)}</td>
                         <td className={`text-right tabular-nums ${better(vb, va) ? "font-semibold" : ""}`}>{show(vb)}</td>
                       </tr>
@@ -148,21 +154,27 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
             {axes.length ? (
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="card p-4">
-                  <AttributeRadar
-                    data={axes.map((x) => ({ attribute: x.label, a: x.percentile, b: B.summary!.profile.find((y) => y.axis === x.axis)!.percentile }))}
-                    keys={[
-                      { key: "a", name: A.summary!.player.name, color: "#0071e3" },
-                      { key: "b", name: B.summary!.player.name, color: "#ff375f" },
-                    ]}
-                    height={340}
-                  />
+                  <ChartFrame
+                    label={`Radar chart comparing percentiles of ${A.summary!.player.name} and ${B.summary!.player.name}.`}
+                    tableId="compare-table"
+                    className="h-80"
+                  >
+                    <PercentileRadar
+                      data={axes.map((x) => ({ label: x.label, a: x.percentile, b: B.summary!.profile.find((y) => y.axis === x.axis)!.percentile }))}
+                      series={[
+                        { key: "a", name: A.summary!.player.name },
+                        { key: "b", name: B.summary!.player.name },
+                      ]}
+                    />
+                  </ChartFrame>
                 </div>
+                <div id="compare-table" tabIndex={-1}>
                 <TableWrap caption="Percentiles">
                   <thead>
                     <tr>
                       <th scope="col">Measure</th>
-                      <th scope="col" className="text-right">{A.summary!.player.name}</th>
-                      <th scope="col" className="text-right">{B.summary!.player.name}</th>
+                      <th scope="col" className="num">{A.summary!.player.name}</th>
+                      <th scope="col" className="num">{B.summary!.player.name}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -170,14 +182,15 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
                       const y = B.summary!.profile.find((p) => p.axis === x.axis)!;
                       return (
                         <tr key={x.axis}>
-                          <th scope="row" className="font-normal">{x.label}</th>
-                          <td className="text-right tabular-nums">{num(x.percentile, 1)} <span className="text-xs text-[#6e6e73]">({int(x.balls)} b)</span></td>
-                          <td className="text-right tabular-nums">{num(y.percentile, 1)} <span className="text-xs text-[#6e6e73]">({int(y.balls)} b)</span></td>
+                          <th scope="row" className="!font-normal">{x.label}</th>
+                          <td className="num">{num(x.percentile, 1)} <span className="text-xs text-muted">({int(x.balls)} b)</span></td>
+                          <td className="num">{num(y.percentile, 1)} <span className="text-xs text-muted">({int(y.balls)} b)</span></td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </TableWrap>
+                </div>
               </div>
             ) : (
               <Muted>The two players share no profile measure in {FORMAT_LABEL[fmt]}s.</Muted>

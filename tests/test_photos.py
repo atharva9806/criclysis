@@ -283,6 +283,28 @@ class CacheAndOutageTests(PhotoTestCase):
         self.assertEqual(stats["commonsCalls"], photos.MAX_FAILURES)
         self.assertIn("2 Commons calls failed in a row; 100 files keep", self.logs)
 
+    def test_a_spent_budget_stops_the_requests_and_keeps_the_cache(self):
+        first, _ = self.resolve(FakeWikimedia(self.CLAIMS, self.PAGES), {"aaaa0001"}, {"1": "aaaa0001"})
+        fake = FakeWikimedia(self.CLAIMS, self.PAGES)
+        later = NOW + timedelta(days=8)
+        with mock.patch.object(photos, "fetch_claims", side_effect=photos.PhotoSourceError("slow")):
+            got, stats = self.resolve(fake, {"aaaa0001"}, {"1": "aaaa0001"}, now=later, budget=-1)
+        self.assertEqual((got, stats["commonsCalls"]), (first, 0))
+        self.assertIn("budget is spent; 1 files keep their cached Commons metadata", self.logs)
+
+    def test_unseen_files_are_fetched_before_stale_ones(self):
+        names = [f"P{i:03d}.jpg" for i in range(60)]
+        claims = [(f"Q{i}", str(i), n) for i, n in enumerate(names)]
+        register = {str(i): f"{i:08x}" for i in range(60)}
+        # The first run knows only the last ten files.
+        self.resolve(FakeWikimedia(claims[50:], {n: page(n, "CC0") for n in names}),
+                     set(register.values()), register)
+        fake = FakeWikimedia(claims, {n: page(n, "CC0") for n in names})
+        self.resolve(fake, set(register.values()), register, now=NOW + timedelta(days=7))
+        first_batch = urllib.parse.parse_qs(urllib.parse.urlsplit(
+            [c for c in fake.calls if c.startswith(photos.COMMONS_API)][0]).query)["titles"][0]
+        self.assertEqual(first_batch.split("|"), [f"File:{n}" for n in names[:50]])
+
     def test_an_unexpected_error_never_fails_the_build(self):
         with mock.patch.object(photos, "resolve_photos", side_effect=KeyError("boom")), \
                 self.assertLogs("pipeline.photos", "ERROR"):

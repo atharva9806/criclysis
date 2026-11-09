@@ -68,7 +68,8 @@ CACHE_VERSION = 1
 #: week, so the first run after the weekly cache key rotates refreshes them.
 MAX_AGE = timedelta(days=6)
 #: Wall-clock budget for all requests; after it, cached values or nothing.
-BUDGET_SECONDS = 300
+#: About 2,000 photos take 40 Commons calls, roughly two minutes.
+BUDGET_SECONDS = 600
 COMMONS_BATCH = 50
 #: Keep each Commons GET comfortably below URL length limits.
 MAX_URL_LENGTH = 6000
@@ -366,6 +367,11 @@ def match_people(ids: dict[str, list[str]], claims: dict[str, dict[str, str | No
     return {pid: v for pid, v in items.items() if pid not in shared}, skipped
 
 
+def _brief(exc: Exception) -> str:
+    """The error without the long query string of the URL it names."""
+    return re.sub(r"(https?://[^\s?]+)\?\S*?(:?)(?=\s|$)", r"\1?...\2", str(exc))
+
+
 def _counts(counter: Counter) -> str:
     return ", ".join(f"{k} {n}" for k, n in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0])))
 
@@ -407,7 +413,7 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
             else:
                 fallback = "no cached snapshot, so no photos in this build"
             stats["wikidata"] = f"unavailable ({fallback})"
-            log.warning("photos: Wikidata query failed (%s); %s", exc, fallback)
+            log.warning("photos: Wikidata query failed (%s); %s", _brief(exc), fallback)
     claims = (wikidata or {}).get("claims", {})
     matched, skipped = match_people(ids, claims)
     with_image = {pid: image for pid, (_qid, image) in matched.items() if image}
@@ -415,8 +421,12 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
 
     commons: dict[str, dict] = cache.get("commons", {})
     files = sorted(set(with_image.values()))
-    stale = [f for f in files if not _fresh(commons.get(f), now)]
+    # Files never seen first, then the oldest, so a run cut short by the
+    # budget still moves the cache forward.
+    stale = sorted((f for f in files if not _fresh(commons.get(f), now)),
+                   key=lambda f: (f in commons, str(commons.get(f, {}).get("fetched", "")), f))
     failures = 0
+    fetched: set[str] = set()
     pending = batches(stale)
     for i, batch in enumerate(pending):
         why = (f"the {budget:.0f}s budget is spent" if time.monotonic() > deadline else
@@ -431,12 +441,13 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
         except (net.Blocked, net.FetchError, PhotoSourceError, OSError) as exc:
             failures += 1
             stats["commonsFailed"] += 1
-            log.warning("photos: Commons call for %d files failed (%s)", len(batch), exc)
+            log.warning("photos: Commons call for %d files failed (%s)", len(batch), _brief(exc))
             continue
         failures = 0
         stamp = now.isoformat(timespec="seconds")
         for name, info in got.items():
             commons[name] = {**info, "fetched": stamp}
+            fetched.add(name)
 
     photos: dict[str, dict] = {}
     licences: Counter = Counter()
@@ -468,9 +479,12 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
     if stats["unavailable"]:
         line += f", {stats['unavailable']} without Commons metadata"
     log.info("%s", line)
-    log.info("photos: wikidata %s; commons %d calls, %d failed, %d of %d files from the cache%s",
-             stats["wikidata"], stats["commonsCalls"], stats["commonsFailed"],
-             len(files) - len(stale), len(files),
+    cached = [f for f in files if f in commons and f not in fetched]
+    old = sum(1 for f in cached if not _fresh(commons[f], now))
+    log.info("photos: wikidata %s; commons %d calls (%d failed), %d files fetched, %d from the "
+             "cache%s%s", stats["wikidata"], stats["commonsCalls"], stats["commonsFailed"],
+             len(fetched & set(files)), len(cached),
+             f" ({old} older than {MAX_AGE.days} days)" if old else "",
              f"; skipped: {_counts(skipped)}" if skipped else "")
     stats["licences"] = dict(licences)
     stats["skipped"] = dict(skipped)

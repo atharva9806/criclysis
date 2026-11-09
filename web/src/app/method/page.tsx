@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { FORMAT_KEYS, type FormatKey, type ScoreSummary, type Thresholds } from "@/lib/contract/pipeline";
 import { getDatasetMeta, listWinModels, type WinModelSummary } from "@/lib/data";
-import { date, formatKeyLabel, int, num, pct } from "@/lib/format";
+import { date, formatKeyLabel, int, num, pct, plural } from "@/lib/format";
 import { PageHeader, Section, TableWrap } from "@/components/data";
 import CalibrationChart, { type CalibrationPoint } from "@/components/charts/Calibration";
 import { ChartFrame } from "@/components/charts/Charts";
@@ -53,6 +53,16 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
       </div>
     </li>
   );
+}
+
+/** The shared-names sentence, worded for the counts in this build (0, 1 or many). */
+function identityNote({ ambiguousNames: names, stylesSkippedAmbiguous: skipped }: { ambiguousNames: number; stylesSkippedAmbiguous: number }): string {
+  if (!names) return "In this build, no name belongs to more than one person.";
+  const shared = `In this build, ${plural(names, "name")} ${names === 1 ? "belongs" : "belong"} to more than one person`;
+  if (!skipped) return `${shared}; bowling styles are not matched by name for such players, though none of them is left without a style as a result.`;
+  return skipped === 1
+    ? `${shared}; bowling styles are not matched by name for 1 player with such a name, so that player appears without a style rather than with a guessed one.`
+    : `${shared}; bowling styles are not matched by name for ${plural(skipped, "player")} with such names, so they appear without a style rather than with a guessed one.`;
 }
 
 const brier = (v: number | null | undefined) => num(v, 3);
@@ -202,13 +212,7 @@ export default async function MethodPage() {
           </p>
           <p>
             Players are keyed by Cricsheet&apos;s person id, never by name, so two cricketers with the same name stay separate.
-            {identity ? (
-              <>
-                {" "}
-                In this build, {int(identity.ambiguousNames)} names belong to more than one person; bowling styles are not matched by name for{" "}
-                {int(identity.stylesSkippedAmbiguous)} players with such names, so they appear without a style rather than with a guessed one.
-              </>
-            ) : null}
+            {identity ? <> {identityNote(identity)}</> : null}
           </p>
         </Prose>
 

@@ -306,10 +306,45 @@ type Replay = {
                    balls: Ball[] }>;
   credit: string;
 };
-// Ball tuple is unchanged from replay.py:
-type Ball = [over: number, batter: number, bowler: number, nonStriker: number, runsBat: number, extras: number,
-             extraType: "wides" | "noballs" | "byes" | "legbyes" | "penalty" | null, wicketKind: string | null, playerOut: number | null];
+type ExtraKind = "wides" | "noballs" | "byes" | "legbyes" | "penalty";
+// The first nine elements are the v1 ball, unchanged. [9] and [10] are NEW, optional and trailing.
+type Ball = [over: number, batter: number, bowler: number, nonStriker: number,   // indexes into people
+             runsBat: number,                       // runs.batter
+             extras: number,                        // runs.extras: every extra run on the ball
+             extraType: ExtraKind | null,           // the first ExtraKind (in the order above) present in Cricsheet's extras
+             wicketKind: string | null, playerOut: number | null,                  // the first wicket
+             extrasByKind?: Partial<Record<ExtraKind, number>> | null,             // NEW
+             moreWickets?: [kind: string, playerOut: number | null][]];            // NEW
 ```
+
+Ball encoding (CHANGED, backward compatible):
+- **`[9]` extras by kind.** Cricsheet's `extras` object for the delivery, kinds in `ExtraKind` order. It is written only when `[5]` and `[6]` cannot say it: two or more kinds, any `penalty`, or one kind whose value differs from `runs.extras`. Otherwise it is left out and `extraType` carries all of `extras`. It is `null` only when `[10]` follows.
+- **`[10]` further wickets.** The delivery's second and later wickets, in Cricsheet's order, as `[kind, playerOut]`. Written only when there are any.
+- Trailing elements are left out, so a ball has 9, 10 or 11 elements, and almost every ball stays 9 long. A v1 ball (always 9 long) means what it always did.
+- Read balls with `ballExtras`/`ballWickets` (`web/src/lib/contract/pipeline.ts`, which also has the `isBall` guard) or `replay.ball_extras`/`ball_wickets` in Python, never by position past `[8]`.
+- **Legal balls.** A ball is legal unless `extraType` is `wides` or `noballs`. Those two come first in the order, so `[9]` never changes legality.
+- **Counting**, as `aggregate.py` and `matches.py` count:
+  - The batting side loses a wicket for every wicket in `[7]` and `[10]` except `retired hurt` and `retired not out`, in either position.
+  - The bowler is charged `runsBat` plus wides and no-balls. Byes, leg byes and penalty runs are never the bowler's, even off a no-ball.
+  - The bowler is credited with one wicket for a ball with any wicket other than run out, retired hurt, retired out, retired not out, obstructing the field, handled the ball and timed out.
+
+Examples (indexes illustrative):
+
+| Ball | Meaning |
+|---|---|
+| `[23,4,11,5,1,1,"noballs",null,null]` | A no-ball hit for 1: 2 runs, both charged to the bowler. 9 elements, as in v1. |
+| `[23,4,11,5,0,5,"noballs",null,null,{"noballs":1,"byes":4}]` | A no-ball that ran away for 4 byes: 5 runs, 1 charged to the bowler. |
+| `[17,2,8,3,0,5,"wides",null,null]` | Five wides (a wide that went for four): all 5 charged to the bowler. |
+| `[50,0,16,3,0,5,"penalty",null,null,{"penalty":5}]` | 5 penalty runs on the delivery: extras, not the bowler's. |
+| `[24,9,17,6,0,0,null,"caught",9,null,[["timed out",10]]]` | Caught, then the next batter timed out: 2 wickets, 1 to the bowler. |
+| `[12,2,7,3,1,0,null,"run out",3,null,[["retired hurt",2]]]` | Run out, and the other batter retired hurt: 1 wicket. |
+
+**Checks.** `python -m pipeline verify-replays --data <dir>` checks every replay in a build against the rest of it, and the daily refresh runs it on the full corpus before importing:
+- each innings' team, runs, wickets, legal balls and penalty runs against `matches.json` (penalty runs are the only extras it records by kind);
+- each bowler's balls, runs conceded, wickets and maidens in each innings against the `bowling.innings` of their player file (players exported with bowling in that formatKey);
+- each team's `topBowlers` against the same figures summed over the replays.
+
+`npm run test:replays` (`REPLAY_DATA_DIR`, default `fixtures/data-out`) plays every replay through `web/src/lib/replay/engine.ts` and checks its scorecard against `matches.json` and the player files the same way.
 
 ### 1.10 Definitions used by the pipeline
 
@@ -618,6 +653,8 @@ The `MatchRow`, `PlayerProfile` and other row types live in `web/src/lib/contrac
 - Team lists come from Cricsheet `teams`. The `country` metadata is secondary.
 - Win probability, projected score and par are shown only for `odi`/`t20i` matches whose `method` is null and whose scheduled and target overs are the full format. Otherwise the UI states why they are missing.
 - Replays label player context as "career figures as of <dataset date>". It is hindsight for older matches.
+- Replay scorecards split extras by kind (§1.9 ball `[9]`). Byes and leg byes run off a no-ball are byes and leg byes, in the extras and never in the bowler's figures; penalty runs are extras and never the bowler's.
+- Every wicket of a ball counts in the replay's score, fall of wickets and partnerships (§1.9 ball `[10]`). A retirement (retired hurt or not out) is shown against the batter but never costs a wicket, and the ball ticker never shows it as one.
 
 ---
 

@@ -29,11 +29,7 @@ This licence covers the source code in this repository only.
 Ball-by-ball data produced by the pipeline originates from Cricsheet
 (https://cricsheet.org) and is licensed CC BY 4.0
 (https://creativecommons.org/licenses/by/4.0/). Any deployment that uses it must
-credit Cricsheet. The generated About page does so automatically.
+credit Cricsheet; the website does so in its footer and on its Method page.
 
-Player metadata and rankings optionally retrieved from ESPNcricinfo and the ICC
-remain subject to those sites' own terms of use. Neither is used unless
-explicitly enabled.
-
-The bundled demo dataset in web/data is simulated. Every player, team and venue
-in it is fictional.
+The repository contains no simulated or fictional data. The committed fixture
+in fixtures/ is a small real sample of Cricsheet matches used for tests.

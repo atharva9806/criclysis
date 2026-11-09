@@ -504,18 +504,28 @@ Field details:
 
 ### 3.1 Daily workflow (`.github/workflows/refresh.yml`)
 
-1. **Triggers:** `schedule: "23 4 * * *"` (UTC) plus `workflow_dispatch` with inputs `force` (bool) and `import` (bool, default true). Concurrency group `refresh`, no cancelling. Timeout 90 minutes.
+The step numbers below are the ones the comments in `refresh.yml` cite. Steps 4 (`npm ci`) and 7 (`db:migrate`) are split: their first halves run early, before the fetch.
+
+1. **Triggers:** `schedule: "23 4 * * *"` (UTC) plus `workflow_dispatch` with inputs `force` (bool, default false) and `import` (bool, default true). Scheduled runs import and never force. Concurrency group `refresh`, no cancelling. Timeout 90 minutes.
+   - **Plan.** `scripts/ci/refresh-plan.sh` runs first. It decides which steps may run (`fingerprint`, `build_mode`, `winprob`, `replays`, `golden`, `migrate`, `check_fingerprint`, `import`, `revalidate`, `node`) and writes a table of reasons to the run summary. `build_mode` is `genders` now that `build --genders` exists, so the legacy single-gender build steps in the workflow are switched off.
+   - **Early web steps.** `npm ci`, then `npm run db:migrate` (idempotent). Migrate runs on every run that may import, even when the archives turn out to be unchanged; it is skipped when `import=false` or the `DATABASE_URL` secret is missing.
 2. `python -m pipeline fetch --refresh --no-mirror --formats test odi t20i` fetches from cricsheet.org. The mirror has no women's data, no Afghanistan matches, and stops at 2026-06-28 (R2).
 3. `python -m pipeline fingerprint --out data/out/fingerprint.json`.
-4. `npm ci`, then `npm run check-fingerprint -- ../data/out/fingerprint.json`. It compares against the latest complete `dataset_meta.source_fingerprint`. If nothing changed and `force` is false, the job stops successfully.
-5. Build:
+4. `npm run check-fingerprint -- ../data/out/fingerprint.json` compares against the latest complete `dataset_meta.source_fingerprint` and prints `changed` or `unchanged`. If unchanged, steps 5 to 8 are skipped and the run ends successfully with an "Unchanged, skipped" notice. The check is skipped (so everything is rebuilt) when `force=true`, when `import=false`, or when `DATABASE_URL` is missing.
+5. Build, then check the replays in Python:
    - `python -m pipeline build --genders male female`
    - `python -m pipeline winprob --genders male female`
    - `python -m pipeline replays --all --genders male female`
-6. `WINPROB_FILE=../data/out/winprob.json npm run test:golden` checks the TypeScript port against all four models. This is the only place the women's models are checked.
-7. `npm run db:migrate`, then `npm run import -- --data ../data/out`.
-8. `curl -fsS -X POST "$SITE_URL/api/revalidate" -H "x-revalidate-secret: $REVALIDATE_SECRET"`.
-9. Upload `manifest.json`, `fingerprint.json` and the import report, kept for 14 days. When `import=false`, upload all of `data/out` instead, kept for 3 days, so A, B and C can inspect real women's output.
+   - `python -m pipeline verify-replays --data data/out` checks every replay against the rest of the build (§1.9): innings totals, wickets, legal balls and penalty runs against `matches.json`, bowler figures against the player files, and team top bowlers against the replays summed. It lists the first mismatches and fails the run.
+   - `scripts/ci/volume_summary.py` writes the build's size to the run summary (it always runs once a build was attempted).
+6. Check the TypeScript side against the new build:
+   - `WINPROB_FILE=../data/out/winprob.json npm run test:golden` checks the TypeScript port against all four models. This is the only place the women's models are checked.
+   - `REPLAY_DATA_DIR=../data/out npm run test:replays` plays every replay through the TypeScript replay engine and checks its scorecard against `matches.json` and the player files.
+7. `npm run import -- --data ../data/out` (`db:migrate` already ran in step 1). The output goes through `scripts/ci/redact.py`, which masks `DATABASE_URL`, into `data/import-report.txt`.
+8. `curl -fsS --retry 3 -X POST "${SITE_URL%/}/api/revalidate" -H "x-revalidate-secret: $REVALIDATE_SECRET"`. Skipped unless the import ran and both `REVALIDATE_SECRET` and `SITE_URL` are set.
+9. With `import=true`, upload `manifest.json`, `fingerprint.json` and the import report as `refresh-report-<run id>`, kept for 14 days. With `import=false`, the run skips steps 4, 7 and 8 (and the migration) and uploads all of `data/out*` as `data-out-<run id>` instead, kept for 3 days, so the real build can be inspected.
+
+On 9 Nov 2026 (run 42620030605), both replay checks passed on the full build: 10,009 replays, 21,432 innings and 116,443 bowling innings in Python, and 109,118 bowling innings in TypeScript.
 
 Secrets and variables:
 - GitHub secret `DATABASE_URL`: the Neon **direct** URL, which advisory locks and DDL need.
@@ -931,7 +941,7 @@ Branches: `feat/pipeline-v2`, `feat/db-importer`, `feat/replay-engine`, `ci/refr
    - 98 have `absent_hurt`.
    - 1,883 of 6,872 files are revisions (so the fingerprint uses CRCs).
    - 8 matches in the T20I archive have `overs: 50` (unexplained; investigate).
-   - The replay format keeps only the first wicket of a delivery.
+   - The v1 replay format kept only the first wicket of a delivery and one extras kind. Fixed in PR #9: each replay ball now keeps every wicket (`[10]`) and the extras by kind (`[9]`) (§1.9), and both replay checks (§3.1 steps 5 and 6) run on the full corpus before every import.
    - Mitigation: A4, A7 and A8.
 10. **R10: fabricated content in the web app.**
     - `seed.ts`, `seed-data.ts`, `live.ts` and analytics `attr*` ratings are fake.

@@ -1,112 +1,193 @@
 # Data sources and provenance
 
-Criclysis is built from ball-by-ball data. This file records exactly where every
-field comes from, under what licence, and what the data does *not* cover.
+This file records where every field on Criclysis comes from, under what
+licence, and what the data does *not* cover. Counts are from the 9 Nov 2026
+build (GitHub Actions run 42620030605); the data is refreshed daily.
 
-## 1. Ball-by-ball match data — Cricsheet
+In short:
 
-Every delivery on this site comes from [Cricsheet](https://cricsheet.org):
-batter, bowler, runs, extras and dismissal, for every ball of every match in the
-archive. It is published under **CC BY 4.0**, which requires attribution
-wherever the data appears. The site credits Cricsheet in the page footer and on
-the Method page automatically whenever a live dataset is loaded.
+| Source | What it provides | Licence |
+|---|---|---|
+| [Cricsheet](https://cricsheet.org) JSON archives | Every ball of every match: batter, bowler, runs, extras, wickets, plus match info | CC BY 4.0 |
+| Cricsheet people register (`register/people.csv`) | A link from ESPNcricinfo player ids to Cricsheet person ids, used only to attach bowling styles | CC BY 4.0 |
+| `data/player_styles.csv` | Bowling style, batting hand, role and country | Not open data; see section 2 |
+| `data/styles.csv` | 72 hand-curated corrections | Part of this repository |
 
-This is the only source that can answer the questions this site exists to ask.
-Scorecard aggregates can tell you a batter averages 48; only ball-by-ball data
-can tell you they average 21 against left-arm wrist spin in the middle overs.
+Nothing else is used. There is no live-score API, no scraping and no paid
+feed. The only network access in the pipeline is `python -m pipeline fetch`,
+which downloads Cricsheet's files.
 
-### Coverage — read this before trusting a career total
+## 1. Ball-by-ball match data: Cricsheet
 
-| Format | Matches | First | Last |
-|---|---|---|---|
-| Test | 884 | 2001 | 2026 |
-| ODI | 2,548 | 2002 | 2026 |
-| T20I | 3,440 | 2005 | 2026 |
+Every delivery on the site comes from [Cricsheet](https://cricsheet.org).
 
-**Ball-by-ball data does not reach back to the start of cricket.** A career that
-began before coverage starts is recorded only from that point on. Sachin
-Tendulkar debuted in 1989 and Shane Warne in 1992, so a large part of their
-careers is simply absent — their totals here are partial and will not match
-their full career records. Players whose careers sit entirely inside the window
-(most of the current generation) are complete.
+- **Files.** `python -m pipeline fetch` downloads one zip per format from
+  `cricsheet.org/downloads/`: `tests_json.zip`, `odis_json.zip` and
+  `t20s_json.zip`. Each zip holds men's and women's matches side by side;
+  each match's `info.gender` tells them apart.
+- **Licence.** Cricsheet publishes the data under the
+  [Creative Commons Attribution 4.0 licence (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/),
+  which requires credit wherever the data appears.
+- **Credit.** The site credits Cricsheet (CC BY 4.0) in the footer and on
+  every data view, together with the "data as of" date. The build also writes
+  the credit into `manifest.json`, every replay file and `winprob.json`.
+- **Politeness.** All downloads go through `pipeline/net.py`. It sends an
+  honest User-Agent, checks `robots.txt` before every host, waits at least two
+  seconds between requests to the same host, and caches what it downloads.
+  If `robots.txt` disallows a file, or the host can't be reached to check it,
+  nothing is requested.
 
-The site computes this range from the data itself and shows it on the home page,
-on every player profile and on the Method page, so the limitation travels with
-the numbers rather than living only in this file.
+### Coverage: read this before trusting a career total
 
-### Mirrors
+As of the 9 Nov 2026 build (refreshed daily): 10,009 matches, 201 teams and
+382 venues, with data through 2 Nov 2026.
 
-Cricsheet filters automated traffic, so a direct download can fail from a CI
-runner, a cloud VM or a corporate network while working fine from a laptop. The
-pipeline therefore tries `cricsheet.org` first and falls back to a public GitHub
-Release mirror of the same archives (see `MIRRORS` in
-`pipeline/sources/cricsheet.py`). Mirrored data is the same CC BY 4.0 Cricsheet
-data and carries the same attribution obligation. `--no-mirror` disables the
-fallback.
+| formatKey | Matches | Deliveries | Players | Venues | First match | Last match |
+|---|---|---|---|---|---|---|
+| `test-m` (men's Tests) | 899 | 1,730,523 | 1,071 | 100 | 2001-12-19 | 2026-10-28 |
+| `odi-m` (men's ODIs) | 2,617 | 1,388,575 | 2,018 | 186 | 2002-06-27 | 2026-11-02 |
+| `t20i-m` (men's T20Is) | 3,649 | 820,257 | 4,814 | 241 | 2005-02-17 | 2026-11-01 |
+| `test-w` (women's Tests) | 24 | 46,751 | 154 | 19 | 2003-02-22 | 2026-07-10 |
+| `odi-w` (women's ODIs) | 620 | 324,698 | 703 | 128 | 2007-01-22 | 2026-10-28 |
+| `t20i-w` (women's T20Is) | 2,200 | 499,829 | 2,795 | 238 | 2009-06-18 | 2026-10-25 |
 
-## 2. Player metadata — bowling style, batting hand, role
+"Players" here counts everyone who batted or bowled in that formatKey. A
+player gets a profile page once they have faced 60 balls, or bowled 240 balls
+or taken 5 wickets, in at least one format: 5,329 players in this build.
 
-Cricsheet names the bowler for every ball but never says **what kind of bowler
-they are**, and that one attribute is the hinge the entire matchup analysis
-turns on. Without it, "against off spin in the powerplay" cannot be computed and
-the strategy planner has nothing to reason with.
+**Ball-by-ball data does not reach back to the start of international
+cricket.** A career that began before coverage starts is counted only from
+that point, so some totals are partial and will not match the player's full
+career record. Women's Tests are thin: 24 matches in total. The site computes
+the coverage range from the data and shows it on the home page, on every
+player profile and on the Method page, so the limitation travels with the
+numbers.
 
-`data/player_styles.csv` supplies it: 14,414 players keyed on the Cricsheet
-person id, of whom 11,996 have a bowling style. It is generated by
-`pipeline/sources/playermeta.py` from a published player-metadata table.
+### Identity
 
-**Licensing caveat, stated plainly.** These attributes originate from public
-player profiles (ESPNcricinfo), reached via an intermediate open-source
-redistribution. That is not open data in the way Cricsheet is, and the chain
-carries whatever obligations the original terms impose. Treat this file as
-convenience metadata rather than a redistributable dataset: if you intend to
-publish or commercialise a deployment, source these attributes yourself, from a
-feed you are licensed to use, and drop it in via `--styles-file`.
+Players are keyed by Cricsheet's person id (`info.registry` in each match
+file), never by name. Two cricketers who share a name stay separate.
 
-Nothing else on the site depends on it. Remove the file and every average,
-strike rate, phase split, dismissal breakdown and career arc is unchanged — only
-the bowling-type splits go quiet.
+### The GitHub-release mirror (in the code, not used)
 
-### Corrections
+`pipeline/sources/cricsheet.py` lists one fallback mirror in `MIRRORS`: GitHub
+Release copies of the men's archives. It is not used, for three reasons:
 
-`data/styles.csv` is read **last** and overrides everything, including the
-generated file. Hand-checked corrections belong there. Names must match
-Cricsheet's `unique_name`.
+- The daily refresh passes `--no-mirror`, so it downloads from cricsheet.org
+  only.
+- The mirror is incomplete. It has no women's archives, no Afghanistan
+  matches, and its latest match is 2026-06-28 (`docs/ARCHITECTURE.md` §7 R2).
+- When checked from the development sandbox on 9 Nov 2026, the pipeline's
+  `robots.txt` check refused the mirror's URLs, so the fallback downloads
+  nothing.
 
-## 3. Optional: ESPNcricinfo and ICC
+Mirrored data would still be Cricsheet data under CC BY 4.0, with the same
+credit obligation.
 
-Both are wired up and both are **opt-in**; neither runs by default.
+## 2. Bowling style and batting hand
 
-* `--enrich espncricinfo` fetches profile attributes for bowlers still missing a
-  style. It checks `robots.txt` for every URL and stops if disallowed, waits at
-  least two seconds between requests (longer if `Crawl-delay` says so),
-  identifies itself honestly, and caches every response.
-* `python -m pipeline rankings` fetches ICC team and player rankings.
+Cricsheet names the bowler for every ball but never says **what kind of
+bowler** they are. That one attribute is what the matchup analysis ("against
+left-arm wrist spin in the middle overs") turns on. It comes from two local
+files, joined in [`pipeline/enrich.py`](../pipeline/enrich.py). Nothing is
+fetched for it.
 
-Neither is open data. Their terms of use are your responsibility, and the site
-is fully functional without either.
+### `data/player_styles.csv`
 
-## What is not in the data at all
+- **Contents.** 14,419 rows. Every row has a name and an ESPNcricinfo player
+  id; 11,996 have a bowling style and 14,395 a batting hand (counted from the
+  file).
+- **Provenance, as far as the repository records it.** The file header says
+  it was generated by
+  [`pipeline/sources/playermeta.py`](../pipeline/sources/playermeta.py). That
+  module describes its input as "a published player-metadata table" whose
+  attributes "ultimately originate from public player profiles", and says the
+  rows carry ESPNcricinfo ids. The file arrived in this repository in commit
+  `b3ef4a8` (8 Oct 2026), ported with the rest of the pipeline from an earlier
+  project. **The exact upstream table, its author and its licence are not
+  recorded anywhere in the repository, so they are unknown.**
+- **Licensing caveat.** These attributes are not open data in the way
+  Cricsheet is. Treat the file as convenience metadata, not a redistributable
+  dataset. Before publishing or commercialising a deployment, source the
+  attributes from a feed you are licensed to use and pass it in with
+  `python -m pipeline build --styles-file your.csv`.
 
-* **Ball tracking** — length, line, speed, swing and turn. No openly licensed
-  ball-by-ball dataset carries them. Nothing here claims a batter has a "short
-  ball problem". Where the strategy planner mentions the stumps, that is
-  inferred from the *mix of dismissal modes* (bowled and lbw against caught),
-  which the data does record, and it says so.
-* **Shot and field placement** — so field advice is general, not zonal.
-* **Domestic and franchise cricket** — the pipeline supports IPL, BBL and PSL
-  (`--formats ipl bbl psl`) but the default build is the three international
-  formats.
-* **Women's cricket** — the archives used by default are the men's ones.
-  `--gender female` or `--gender any` changes that, given the matching archives.
+### `data/styles.csv`
 
-## Reproducing this build
+72 hand-curated rows for frequently seen international bowlers, marked
+`source=curated`. It arrived in the same commit; who curated it, and from what
+reference, is not recorded. It is the place for corrections.
+
+### How a row finds its player
+
+The layers are applied in rising order of precedence: `player_styles.csv`,
+then an optional `--styles-file`, then `styles.csv`, which nothing overrides.
+A row attaches to a player:
+
+- **by id,** when its ESPNcricinfo id maps to a Cricsheet person id through
+  Cricsheet's people register (`register/people.csv`, downloaded by `fetch`).
+  An ESPNcricinfo id that the register gives to two people is ignored;
+- **by name,** only when the name belongs to exactly one person in the corpus
+  (both genders), appears on exactly one row of the file, and the row's
+  country is a team that person played for.
+
+Otherwise the player gets no style rather than a guessed one. In the 9 Nov
+2026 build, 6,718 players were resolved by id, 65 by name, and 1 was rejected
+because its name belongs to more than one person. 5,650 players have a
+bowling style and 6,776 a batting hand.
+
+Bowlers with no style drop out of the bowling-type splits only; every other
+statistic is unaffected. Bowlers still missing a style, per formatKey:
+
+| `test-m` | `odi-m` | `t20i-m` | `test-w` | `odi-w` | `t20i-w` |
+|---|---|---|---|---|---|
+| 11 | 59 | 711 | 2 | 36 | 510 |
+
+The Method page shows the same per-format count from the current build.
+
+## What is not in the data
+
+- **Ball tracking:** line, length, speed, swing and turn. No openly licensed
+  ball-by-ball dataset carries them, so the site makes no claims about them.
+- **Shot direction and field placement.**
+- **Fielding quality and fitness.** They can't be measured from this data, so
+  they are left out.
+- **Domestic and franchise cricket.** `fetch` can download the IPL, BBL and
+  PSL archives, but `build` only accepts Tests, ODIs and T20Is.
+
+## Known limitations
+
+- **Partial careers** for players whose careers began before ball-by-ball
+  coverage (see Coverage above).
+- **One person id, two people.** Four Cricsheet person ids appear in both
+  men's and women's matches. In each case Cricsheet's registry gives one id
+  to two different people:
+
+  | Name | Women's side | Men's side |
+  |---|---|---|
+  | Hassan Nawaz | Singapore | Pakistan |
+  | N Magagula | Eswatini | Swaziland |
+  | S Ravikumar | Sri Lanka | Costa Rica |
+  | Dilum Fernando | Bahrain | Romania |
+
+  A profile has one gender, so the build keeps the side with more balls faced
+  or bowled and logs a warning naming both sides and their matches. The other
+  person's matches still count in team and match records, but they have no
+  profile page. This is an upstream registry issue; the fix belongs in
+  Cricsheet's data.
+- **Style coverage is thinnest in T20Is,** where many associate-nation
+  bowlers have no recorded style (711 men's and 510 women's bowlers, above).
+
+## Reproducing a build
 
 ```bash
-python -m pipeline all --formats test odi t20i
-python scripts/check_dataset.py
+python -m pipeline fetch --formats test odi t20i            # archives and people register
+python -m pipeline build --genders male female              # data/out
+python -m pipeline winprob --genders male female            # data/out/winprob.json
+python -m pipeline replays --all --genders male female      # data/out/replays/
+python -m pipeline verify-replays --data data/out           # check replays against the build
 ```
 
-`check_dataset.py` prints the coverage, the player count and, per format, how
-many bowlers are still missing a style — the honest measure of how complete the
-matchup analysis is.
+`cricsheet.org` must be reachable. From the development sandbox it is not, so
+local work uses the committed fixture in `fixtures/data-out` (110 men's
+matches); see [OPERATIONS.md](OPERATIONS.md).

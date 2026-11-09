@@ -5,7 +5,7 @@ import type { Replay } from "@/lib/contract/pipeline";
 import type { InningsCard } from "@/lib/replay/engine";
 import { fixed, TEAM_COLORS } from "./format";
 
-const th = "px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73] first:pl-0 first:text-left";
+const th = "px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted first:pl-0 first:text-left";
 const td = "px-2 py-2 text-right tabular-nums first:pl-0 first:text-left";
 
 function totalText(c: InningsCard) {
@@ -31,10 +31,10 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
   if (!cards.length) {
     return (
       <section aria-labelledby="scorecard-title" className="card p-5 sm:p-6">
-        <h2 id="scorecard-title" className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73]">
+        <h2 id="scorecard-title" className="card-title">
           {title}
         </h2>
-        <p className="mt-3 text-sm text-[#6e6e73]">No balls have been bowled yet.</p>
+        <p className="mt-3 text-sm text-muted">No balls have been bowled yet.</p>
       </section>
     );
   }
@@ -45,11 +45,11 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
   return (
     <section aria-labelledby="scorecard-title" className="card p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="scorecard-title" className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73]">
+        <h2 id="scorecard-title" className="card-title">
           {title}
         </h2>
         {cards.length > 1 && (
-          <div role="group" aria-label="Innings" className="segment">
+          <div role="group" aria-label="Innings" className="segmented">
             {cards.map((c) => (
               <button
                 key={c.innings}
@@ -57,7 +57,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
                 aria-pressed={c === shown}
                 data-active={c === shown}
                 onClick={() => setPicked(c.innings)}
-                className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071e3]"
+                
               >
                 {c.team}
                 {cards.filter((x) => x.team === c.team).length > 1 ? ` (${c.innings + 1})` : ""}
@@ -70,7 +70,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
       <p className="mt-3 flex items-center gap-2 text-sm">
         <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: TEAM_COLORS[shown.innings % 2] }} />
         <span className="font-semibold">{shown.team}</span>
-        <span className="tabular-nums text-[#6e6e73]">
+        <span className="tabular-nums text-muted">
           {totalText(shown)}
           {shown.complete ? "" : " · in progress"}
         </span>
@@ -82,7 +82,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
             {shown.team} batting, innings {shown.innings + 1}
           </caption>
           <thead>
-            <tr className="border-b border-black/5">
+            <tr className="border-b border-line">
               <th scope="col" className={th}>Batter</th>
               <th scope="col" className={`${th} hidden !text-left sm:table-cell`}>How out</th>
               <th scope="col" className={th}>R</th>
@@ -94,13 +94,13 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
           </thead>
           <tbody>
             {shown.batting.map((b) => (
-              <tr key={b.person} className="border-b border-black/5">
+              <tr key={b.person} className="border-b border-line">
                 <th scope="row" className={`${td} font-medium`}>
                   {name(b.person)}
-                  {!b.dismissal && <span className="text-[#6e6e73]">*</span>}
-                  <span className="block text-xs font-normal text-[#6e6e73] sm:hidden">{b.dismissal ? b.dismissal.label : b.atCrease ? "batting" : "not out"}</span>
+                  {!b.dismissal && <span className="text-muted">*</span>}
+                  <span className="block text-xs font-normal text-muted sm:hidden">{b.dismissal ? b.dismissal.label : b.atCrease ? "batting" : "not out"}</span>
                 </th>
-                <td className={`${td} hidden !text-left text-[#6e6e73] sm:table-cell`}>{b.dismissal ? b.dismissal.label : b.atCrease ? "batting" : "not out"}</td>
+                <td className={`${td} hidden !text-left text-muted sm:table-cell`}>{b.dismissal ? b.dismissal.label : b.atCrease ? "batting" : "not out"}</td>
                 <td className={`${td} font-semibold`}>{b.runs}</td>
                 <td className={td}>{b.balls}</td>
                 <td className={td}>{b.fours}</td>
@@ -109,26 +109,26 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
               </tr>
             ))}
           </tbody>
-          <tfoot className="text-[#6e6e73]">
+          <tfoot className="text-muted">
             <tr>
               <th scope="row" className={`${td} font-normal`}>Extras</th>
               <td colSpan={6} className={`${td} !text-left`}>{extrasText(shown)}</td>
             </tr>
             <tr>
-              <th scope="row" className={`${td} font-semibold text-[#1d1d1f]`}>Total</th>
-              <td colSpan={6} className={`${td} !text-left font-semibold text-[#1d1d1f]`}>{totalText(shown)}</td>
+              <th scope="row" className={`${td} font-semibold text-fg`}>Total</th>
+              <td colSpan={6} className={`${td} !text-left font-semibold text-fg`}>{totalText(shown)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
       {yetToBat.length > 0 && (
-        <p className="mt-2 text-xs text-[#6e6e73]">
+        <p className="mt-2 text-xs text-muted">
           {shown.complete ? "Did not bat" : "Yet to bat"}: {yetToBat.map(({ p }) => p.name).join(", ")}
         </p>
       )}
       {shown.fallOfWickets.length > 0 && (
-        <p className="mt-2 text-xs leading-relaxed text-[#6e6e73]">
-          <span className="font-semibold text-[#1d1d1f]">Fall of wickets: </span>
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          <span className="font-semibold text-fg">Fall of wickets: </span>
           {shown.fallOfWickets.map((f) => `${f.wicket}-${f.runs} (${name(f.person)}, ${f.label} ov)`).join(", ")}
         </p>
       )}
@@ -139,7 +139,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
             {shown.bowlingTeam} bowling, innings {shown.innings + 1}
           </caption>
           <thead>
-            <tr className="border-b border-black/5">
+            <tr className="border-b border-line">
               <th scope="col" className={th}>Bowler</th>
               <th scope="col" className={th}>O</th>
               <th scope="col" className={th}>M</th>
@@ -152,7 +152,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
           </thead>
           <tbody>
             {shown.bowling.map((b) => (
-              <tr key={b.person} className="border-b border-black/5 last:border-0">
+              <tr key={b.person} className="border-b border-line last:border-0">
                 <th scope="row" className={`${td} font-medium`}>{name(b.person)}</th>
                 <td className={td}>{b.overs}</td>
                 <td className={td}>{b.maidens}</td>
@@ -166,7 +166,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-[11px] text-[#6e6e73]">Replays carry no fielders, so catches name only the bowler.</p>
+      <p className="mt-3 text-xs text-muted">Replays carry no fielders, so catches name only the bowler.</p>
     </section>
   );
 }

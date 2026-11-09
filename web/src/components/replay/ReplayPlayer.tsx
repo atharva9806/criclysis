@@ -171,20 +171,20 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
   return (
     <div data-replay-root>
       <header className="mb-6">
-        <p className="flex flex-wrap items-center gap-2 text-xs text-[#6e6e73]">
-          <span className="rounded-full bg-[#1d1d1f] px-2.5 py-0.5 font-semibold uppercase tracking-wider text-white">Replay</span>
+        <p className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted">
+          <span className="badge badge-accent font-semibold uppercase tracking-wider">Replay</span>
           <span>
             {[replay.event, replay.stage].filter(Boolean).join(" · ")}
             {replay.event || replay.stage ? " · " : ""}
             {formatLabel}
           </span>
         </p>
-        <h1 className="headline mt-3 text-3xl sm:text-5xl">{replay.title}</h1>
-        <p className="mt-2 text-sm text-[#6e6e73]">
+        <h1 className="mt-3 text-title text-balance">{replay.title}</h1>
+        <p className="mt-2 text-sm text-muted">
           {formatDate(replay.date)} · {replay.venue}
           {toss ? ` · ${toss}` : ""}
         </p>
-        <p className="mt-1 text-sm text-[#6e6e73]">A real match, replayed ball by ball from its Cricsheet record. Nothing here is simulated.</p>
+        <p className="mt-1 text-sm text-muted">A real match, replayed ball by ball from its Cricsheet record. Nothing here is simulated.</p>
       </header>
 
       <p className="sr-only" aria-live="polite" aria-atomic="true">
@@ -194,11 +194,11 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
       {total === 0 ? (
         <section className="card p-6 text-sm">
           <p className="font-semibold">No ball-by-ball record for this match.</p>
-          <p className="mt-1 text-[#6e6e73]">{outcomeOf(replay).text || "No result was recorded."}</p>
+          <p className="mt-1 text-muted">{outcomeOf(replay).text || "No result was recorded."}</p>
         </section>
       ) : (
         <>
-          <div className="grid gap-5 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             <div className="min-w-0 space-y-5 lg:col-span-2">
               <Scoreboard replay={replay} timeline={tl} state={state} card={cards[state.innings]} />
               <Controls
@@ -222,7 +222,7 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
             </div>
           </div>
 
-          <div className="mt-5 grid gap-5 xl:grid-cols-5">
+          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-5">
             <div className="min-w-0 xl:col-span-3">
               <Scorecard replay={replay} cards={cards} />
             </div>
@@ -239,14 +239,14 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
         <Squads squads={xi} battingOrder={teams} hasContext={!!context} datasetAsOf={asOf} />
       </div>
 
-      <footer className="mt-6 text-xs leading-relaxed text-[#6e6e73]">
+      <footer className="mt-6 text-xs leading-relaxed text-muted">
         <p>
           Ball-by-ball data from{" "}
-          <a href="https://cricsheet.org" className="text-[#0071e3] hover:underline">
+          <a href="https://cricsheet.org" className="link">
             Cricsheet
           </a>
           , licensed under{" "}
-          <a href="https://creativecommons.org/licenses/by/4.0/" className="text-[#0071e3] hover:underline">
+          <a href="https://creativecommons.org/licenses/by/4.0/" className="link">
             CC BY 4.0
           </a>
           {asOf ? `. Data as of ${formatDate(asOf)}.` : "."} Win probability, projected score and par come from a model fitted to Cricsheet history; see the method notes.

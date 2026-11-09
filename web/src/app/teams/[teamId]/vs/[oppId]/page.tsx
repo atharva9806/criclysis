@@ -1,48 +1,76 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { formatKey, type Fmt } from "@/lib/contract/pipeline";
 import { getDatasetMeta, getHeadToHead } from "@/lib/data";
-import { formatKeyLabel, plural, record } from "@/lib/format";
+import { FORMAT_LABEL, formatKeyLabel, plural, record } from "@/lib/format";
 import { fmtParam, qs, type SearchParams } from "@/lib/params";
-import type { Fmt } from "@/lib/contract/pipeline";
 import { FormatTabs, MatchGrid, Muted, PageHeader, RecordCells, RecordHeads, Section, TableWrap } from "@/components/data";
+import { CardGridSkeleton } from "@/components/Loading";
+import { FMTS, findTeam } from "../../../lookup";
 
-export default async function HeadToHeadPage({ params, searchParams }: { params: Promise<{ teamId: string; oppId: string }>; searchParams: Promise<SearchParams> }) {
-  const [{ teamId, oppId }, sp] = await Promise.all([params, searchParams]);
-  const meta = await getDatasetMeta();
-  const probe = await getHeadToHead(teamId, oppId, fmtParam(sp.f) ?? "odi");
-  if (!probe.team || !probe.opponent) notFound();
-  // Formats both teams have played; default to the requested one, else the first shared one.
-  const shared = (["test", "odi", "t20i"] as Fmt[]).filter((f) => probe.team!.formats[f] && probe.opponent!.formats[f]);
-  const fmt = fmtParam(sp.f) && shared.includes(fmtParam(sp.f)!) ? fmtParam(sp.f)! : (shared[0] ?? "odi");
-  const h = fmt === (fmtParam(sp.f) ?? "odi") ? probe : await getHeadToHead(teamId, oppId, fmt);
-  const minM = meta?.thresholds.teamMinMatches ?? 5;
-  const T = probe.team.label;
-  const O = probe.opponent.label;
+type Props = { params: Promise<{ teamId: string; oppId: string }>; searchParams: Promise<SearchParams> };
 
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { teamId, oppId } = await params;
+  const [a, b] = await Promise.all([findTeam(teamId), findTeam(oppId)]);
+  return { title: a && b ? `${a.label} v ${b.label} · Criclysis` : "Head to head not found · Criclysis" };
+}
+
+async function Body({ teamId, oppId, fmt, T, O, minM }: { teamId: string; oppId: string; fmt: Fmt; T: string; O: string; minM: number }) {
+  const h = await getHeadToHead(teamId, oppId, fmt);
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
-      <Link href={`/teams/${teamId}${qs({ f: fmt })}`} className="text-sm text-[#0071e3]">← {T}</Link>
-      <div className="mt-4">
-        <PageHeader
-          eyebrow={h.formatKey ? formatKeyLabel(h.formatKey) : "Head to head"}
-          title={`${T} v ${O}`}
-          sub={h.summary ? `${T} ${record(h.summary, minM)} against ${O}.` : `No ${fmt.toUpperCase()} matches between these teams in the data.`}
-        />
-      </div>
-      <FormatTabs formats={shared} active={fmt} href={(f) => `/teams/${teamId}/vs/${oppId}${qs({ f })}`} />
+    <>
       {h.summary ? (
-        <Section title="Summary">
-          <TableWrap caption="Head to head">
-            <thead><RecordHeads first="" /></thead>
+        <Section id="summary" title="Summary" sub={`${T} ${record(h.summary, minM)} against ${O}.`}>
+          <TableWrap caption="Head to head record">
+            <thead>
+              <RecordHeads first="" />
+            </thead>
             <tbody>
-              <tr><th scope="row">{T}</th><RecordCells r={h.summary} minMatches={minM} /></tr>
+              <tr>
+                <th scope="row">{T}</th>
+                <RecordCells r={h.summary} minMatches={minM} />
+              </tr>
             </tbody>
           </TableWrap>
         </Section>
       ) : null}
-      <Section title="Every match" sub={plural(h.matches.length, "match", "matches")}>
-        {h.matches.length ? <MatchGrid matches={h.matches} empty="" /> : <Muted>No matches between these teams in this format.</Muted>}
+      <Section id="matches" title="Every match" sub={plural(h.matches.length, "match", "matches")}>
+        {h.matches.length ? <MatchGrid matches={h.matches} empty="" /> : <Muted>No {FORMAT_LABEL[fmt]} matches between these teams in the data.</Muted>}
       </Section>
+    </>
+  );
+}
+
+export default async function HeadToHeadPage({ params, searchParams }: Props) {
+  const [{ teamId, oppId }, sp] = await Promise.all([params, searchParams]);
+  // Both teams must exist before anything streams, so a bogus pair is a real 404.
+  const [team, opp, meta] = await Promise.all([findTeam(teamId), findTeam(oppId), getDatasetMeta()]);
+  if (!team || !opp || teamId === oppId) notFound();
+  // Formats both teams have played; default to the requested one, else the first shared one.
+  const shared = FMTS.filter((f) => team.formats[f] && opp.formats[f]);
+  const wanted = fmtParam(sp.f);
+  const fmt: Fmt = wanted && shared.includes(wanted) ? wanted : (shared[0] ?? wanted ?? "odi");
+  const minM = meta?.thresholds.teamMinMatches ?? 5;
+
+  return (
+    <div className="page">
+      <PageHeader
+        back={{ href: `/teams/${teamId}${qs({ f: fmt })}`, label: team.label }}
+        eyebrow={`${formatKeyLabel(formatKey(fmt, team.gender))} · head to head`}
+        title={`${team.label} v ${opp.label}`}
+        actions={<FormatTabs formats={shared} active={fmt} href={(f) => `/teams/${teamId}/vs/${oppId}${qs({ f })}`} />}
+      />
+      {team.gender !== opp.gender ? (
+        <Muted>
+          {team.label} and {opp.label} play in different competitions (men&apos;s and women&apos;s), so there are no matches between them.
+        </Muted>
+      ) : (
+        <Suspense key={fmt} fallback={<CardGridSkeleton label="Loading the head-to-head record" count={3} />}>
+          <Body teamId={teamId} oppId={oppId} fmt={fmt} T={team.label} O={opp.label} minM={minM} />
+        </Suspense>
+      )}
     </div>
   );
 }

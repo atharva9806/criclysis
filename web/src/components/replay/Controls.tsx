@@ -18,7 +18,7 @@ function IconButton({ label, onClick, disabled, children, keys }: { label: strin
       aria-label={label}
       aria-keyshortcuts={keys}
       title={keys ? `${label} (${keys.replace(/\+/g, " + ")})` : label}
-      className="grid h-10 w-10 place-items-center rounded-full text-[#1d1d1f] transition-colors hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071e3] aria-disabled:cursor-default aria-disabled:opacity-30 aria-disabled:hover:bg-transparent"
+      className="grid h-10 w-10 place-items-center rounded-full text-fg transition-colors hover:bg-surface-2 aria-disabled:cursor-default aria-disabled:opacity-30 aria-disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -81,7 +81,7 @@ export default function Controls({
             onClick={onToggle}
             aria-label={playing ? "Pause" : atEnd ? "Replay from the start" : "Play"}
             aria-keyshortcuts="Space K"
-            className="mx-1 grid h-12 w-12 place-items-center rounded-full bg-[#0071e3] text-white transition-colors hover:bg-[#0077ed] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071e3]"
+            className="mx-1 grid h-12 w-12 place-items-center rounded-full bg-accent text-on-accent transition-colors hover:bg-accent-strong"
           >
             {playing ? (
               <svg {...svg} width={22} height={22}>
@@ -109,7 +109,7 @@ export default function Controls({
           </IconButton>
         </div>
 
-        <div role="group" aria-label="Playback speed" className="segment">
+        <div role="group" aria-label="Playback speed" className="segmented">
           {SPEEDS.map((s) => (
             <button
               key={s}
@@ -117,7 +117,7 @@ export default function Controls({
               aria-pressed={speed === s}
               data-active={speed === s}
               onClick={() => onSpeed(s)}
-              className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071e3]"
+              
             >
               {s}×<span className="sr-only"> speed</span>
             </button>
@@ -136,10 +136,10 @@ export default function Controls({
           onChange={(e) => onSeek(Number(e.target.value))}
           onKeyDown={onScrubKey}
           aria-valuetext={position}
-          className="w-full cursor-pointer accent-[#0071e3]"
+          className="w-full cursor-pointer accent-[var(--accent)]"
         />
       </label>
-      <p className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-[#6e6e73]">
+      <p className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-muted">
         <span aria-hidden>{position}</span>
         <span className="hidden sm:inline">Space play or pause · ← → ball · Shift + ← → over</span>
       </p>

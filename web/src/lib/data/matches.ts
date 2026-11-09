@@ -67,11 +67,12 @@ async function loadMatches(
   return { rows: rows.map(toMatchRow), total: n };
 }
 
-/** The years that have matches, newest first, for the match index filter. */
-async function loadMatchYears(): Promise<number[]> {
+/** The years that have matches (optionally of one gender), newest first, for the match index filter. */
+async function loadMatchYears(gender?: Gender): Promise<number[]> {
   const rows = await db
     .select({ y: sql<number>`extract(year from ${matches.endDate})::int` })
     .from(matches)
+    .where(scope(gender))
     .groupBy(sql`1`)
     .orderBy(sql`1 desc`);
   return rows.map((r) => r.y);

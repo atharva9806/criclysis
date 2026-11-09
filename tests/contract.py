@@ -404,8 +404,43 @@ REPLAY_INDEX = Arr(Obj({
     "id": Str(), "format": FMT, "formatKey": FK, "gender": GENDER, "title": Str(),
     "event": Str(), "stage": Str(), "date": Str(DATE), "venue": Str(), "result": Str(),
 }))
-EXTRA = Null(Lit("wides", "noballs", "byes", "legbyes", "penalty"))
-BALL = Tup(Int(), Int(), Int(), Int(), Int(), Int(), EXTRA, Null(Str()), Null(Int()))
+EXTRA_KINDS = ("wides", "noballs", "byes", "legbyes", "penalty")
+EXTRA = Null(Lit(*EXTRA_KINDS))
+BALL9 = Tup(Int(), Int(), Int(), Int(), Int(), Int(), EXTRA, Null(Str()), Null(Int()))
+MORE_WICKETS = Arr(Tup(Str(), Null(Int())))
+
+
+class Ball(Spec):
+    """§1.9: the nine-element ball, plus ``[9]`` extras by kind and ``[10]``
+    the wickets after the first, each written only when it is needed."""
+
+    def check(self, value, path, errors):
+        if not isinstance(value, list) or len(value) not in (9, 10, 11):
+            errors.append(f"{path}: expected 9 to 11 items, got {value!r}")
+            return
+        before = len(errors)
+        BALL9.check(value[:9], path, errors)
+        if len(value) == 11:
+            MORE_WICKETS.check(value[10], f"{path}[10]", errors)
+            if not value[10] or not value[7]:
+                errors.append(f"{path}[10]: further wickets without a first one, or none")
+        by_kind = value[9] if len(value) > 9 else None
+        if len(value) == 10 and by_kind is None:
+            errors.append(f"{path}[9]: null with nothing after it")
+        if by_kind is not None:
+            Map(Int(), allowed=EXTRA_KINDS).check(by_kind, f"{path}[9]", errors)
+            if len(errors) > before:
+                return
+            kinds = list(by_kind)
+            if kinds != [k for k in EXTRA_KINDS if k in by_kind]:
+                errors.append(f"{path}[9]: kinds out of order {kinds}")
+            if value[6] != (kinds[0] if kinds else None):
+                errors.append(f"{path}[6]: {value[6]!r} is not the first kind in [9]")
+            if len(kinds) == 1 and "penalty" not in by_kind and by_kind[kinds[0]] == value[5]:
+                errors.append(f"{path}[9]: written though [5] and [6] say the same")
+
+
+BALL = Ball()
 REPLAY = Obj({
     "schemaVersion": Lit(2), "id": Str(), "format": FMT, "formatKey": FK, "gender": GENDER,
     "title": Str(), "event": Str(), "stage": Str(), "date": Str(DATE),
@@ -440,8 +475,10 @@ def replay_totals(replay: dict) -> list[tuple[int, int, int]]:
     for inn in replay["innings"]:
         runs = sum(b[4] + b[5] for b in inn["balls"])
         runs += inn["penaltyRuns"]["pre"] + inn["penaltyRuns"]["post"]
-        wickets = sum(1 for b in inn["balls"]
-                      if b[7] and b[7] not in ("retired hurt", "retired not out"))
+        # The first wicket is [7]; any others are [10]. Retirements never count.
+        kinds = [kind for b in inn["balls"]
+                 for kind in ([b[7]] + [w[0] for w in (b[10] if len(b) > 10 else [])])]
+        wickets = sum(1 for k in kinds if k and k not in ("retired hurt", "retired not out"))
         legal = sum(1 for b in inn["balls"] if b[6] not in ("wides", "noballs"))
         out.append((runs, wickets, legal))
     return out

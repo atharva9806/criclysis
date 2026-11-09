@@ -10,15 +10,18 @@
  * Counting conventions follow pipeline/sources/cricsheet.py and aggregate.py:
  * - a delivery is legal unless it is a wide or a no-ball;
  * - a wide is not a ball faced, a no-ball is;
- * - "retired hurt" and "retired not out" do not cost a wicket;
- * - the bowler is charged bat runs plus wides and no-balls, and is credited
- *   with every dismissal except run outs, retirements, obstructing the field,
- *   handled the ball and timed out;
+ * - every wicket on a ball counts (a ball can carry two), except "retired
+ *   hurt" and "retired not out", which never cost one;
+ * - the bowler is charged bat runs plus wides and no-balls, never byes, leg
+ *   byes or penalty runs (a no-ball can carry byes too, so extras are read by
+ *   kind with ballExtras), and is credited with one wicket for a ball with any
+ *   dismissal other than run outs, retirements, obstructing the field, handled
+ *   the ball and timed out;
  * - fours and sixes are deliveries with 4 or 6 bat runs.
  * Penalty runs (v2 `penaltyRuns`) are added to the innings total: `pre` before
  * the first ball and `post` after the last one. v1 replays have none.
  */
-import type { Ball, Fmt, FormatKey, Replay } from "../contract/pipeline";
+import { ballExtras, ballWickets, EXTRA_KINDS, type Ball, type BallExtras, type BallWicket, type ExtraKind, type Fmt, type FormatKey, type Replay } from "../contract/pipeline";
 import type { WinModel, WinModelCore } from "../winprob/model";
 
 export const NOT_WICKETS = new Set(["retired hurt", "retired not out"]);
@@ -63,9 +66,12 @@ export function phaseFor(format: Fmt, over: number): Phase {
 }
 
 export const isLegal = (b: Ball) => b[6] !== "wides" && b[6] !== "noballs";
-export const isWicket = (b: Ball) => !!b[7] && !NOT_WICKETS.has(b[7]);
+/** Wickets the batting side lost on a ball: every wicket on it but retirements. */
+export const teamWickets = (b: Ball) => ballWickets(b).filter((w) => !NOT_WICKETS.has(w.kind)).length;
+export const isWicket = (b: Ball) => teamWickets(b) > 0;
 const isBatterBall = (b: Ball) => b[6] !== "wides";
-const conceded = (b: Ball) => b[4] + (b[6] === "wides" || b[6] === "noballs" ? b[5] : 0);
+/** Runs charged to the bowler: off the bat, plus wides and no-balls. */
+const conceded = (runsBat: number, e: BallExtras) => runsBat + e.wides + e.noballs;
 const bowlerCredited = (kind: string | null) => !!kind && !NON_BOWLER_DISMISSALS.has(kind);
 
 /**
@@ -109,7 +115,7 @@ export function replayStates(replay: Replay, maxBalls: number): ReplayState[] {
     const target = inn.target ?? null;
     inn.balls.forEach((b, i) => {
       runs += b[4] + b[5];
-      if (isWicket(b)) wickets += 1;
+      wickets += teamWickets(b);
       if (isLegal(b)) legal += 1;
       out.push({ innings: n + 1, ballsLeft: maxBalls - legal, wickets, runs, target, index: i });
     });
@@ -154,6 +160,9 @@ export type Delivery = {
   legal: boolean;
   /** "12.3": the over and the legal ball it belongs to (a wide repeats the number). */
   label: string;
+  /** The ball's extras by kind, and every wicket on it (ballExtras, ballWickets). */
+  extras: BallExtras;
+  outs: BallWicket[];
   /** Innings state after this delivery. */
   runs: number;
   wickets: number;
@@ -187,8 +196,9 @@ export function buildTimeline(replay: Replay): Timeline {
       }
       const ballNo = legalInOver + 1;
       const legalBall = isLegal(b);
+      const outs = ballWickets(b);
       runs += b[4] + b[5];
-      if (isWicket(b)) wickets += 1;
+      wickets += outs.filter((w) => !NOT_WICKETS.has(w.kind)).length;
       if (legalBall) {
         legal += 1;
         legalInOver += 1;
@@ -201,6 +211,8 @@ export function buildTimeline(replay: Replay): Timeline {
         over,
         legal: legalBall,
         label: `${over}.${ballNo}`,
+        extras: ballExtras(b),
+        outs,
         runs,
         wickets,
         legalBalls: legal,
@@ -234,7 +246,10 @@ export type InningsTotal = { team: string; runs: number; wickets: number; legalB
 export function inningsTotals(tl: Timeline, cursor = tl.deliveries.length): InningsTotal[] {
   const out: InningsTotal[] = [];
   tl.innings.forEach((inn, n) => {
-    if (cursor <= inn.start && !(cursor === inn.start && n === 0)) return;
+    // An innings shows once a ball of it is bowled; the first shows from the
+    // start, and at the end of the match so does a trailing innings with no
+    // deliveries (a forfeit), which matches.json also lists.
+    if (cursor < inn.start || (cursor === inn.start && n !== 0 && cursor < tl.deliveries.length)) return;
     const upto = Math.min(cursor, inn.end);
     const last = upto > inn.start ? tl.deliveries[upto - 1] : null;
     const complete = cursor >= inn.end;
@@ -399,10 +414,12 @@ export function stateAt(tl: Timeline, rawCursor: number): MatchState {
   const phaseOver = (next ?? last)?.over ?? 0;
   let striker = ref ? ref.ball[1] : null;
   let nonStriker = ref ? ref.ball[3] : null;
-  if (!next && last && last.ball[8] != null) {
+  if (!next && last) {
     // The innings ended on a dismissal: only the survivor is left at the crease.
-    if (last.ball[8] === striker) striker = null;
-    if (last.ball[8] === nonStriker) nonStriker = null;
+    for (const w of last.outs) {
+      if (w.playerOut === striker) striker = null;
+      if (w.playerOut === nonStriker) nonStriker = null;
+    }
   }
 
   return {
@@ -544,15 +561,17 @@ export function scorecardAt(tl: Timeline, rawCursor = tl.deliveries.length): Inn
 
     for (let i = inn.start; i < end; i++) {
       const d = tl.deliveries[i];
-      const [, batter, bowler, nonStriker, runsBat, ext, extraType, kind, out] = d.ball;
+      const [, batter, bowler, nonStriker, runsBat, ext, extraType] = d.ball;
       const striker = bat(batter)!;
       const other = bat(nonStriker)!;
       // A batter who retired hurt and came back is batting again.
       for (const row of [striker, other]) if (row.dismissal && NOT_WICKETS.has(row.dismissal.kind)) row.dismissal = null;
 
+      const fell = d.outs.filter((w) => !NOT_WICKETS.has(w.kind));
+      const before = d.wickets - fell.length;
       if (!current || current.batters[0] !== Math.min(batter, nonStriker) || current.batters[1] !== Math.max(batter, nonStriker)) {
         if (current) partnerships.push(current);
-        current = { wicket: d.wickets - (isWicket(d.ball) ? 1 : 0) + 1, batters: [Math.min(batter, nonStriker), Math.max(batter, nonStriker)], runs: 0, balls: 0, unbroken: true };
+        current = { wicket: before + 1, batters: [Math.min(batter, nonStriker), Math.max(batter, nonStriker)], runs: 0, balls: 0, unbroken: true };
       }
       current.runs += runsBat + ext;
       if (d.legal) current.balls += 1;
@@ -562,33 +581,46 @@ export function scorecardAt(tl: Timeline, rawCursor = tl.deliveries.length): Inn
       if (runsBat === 4) striker.fours += 1;
       else if (runsBat === 6) striker.sixes += 1;
 
-      if (extraType && extraType in extras) extras[extraType as "byes" | "legbyes" | "wides" | "noballs" | "penalty"] += ext;
+      for (const k of EXTRA_KINDS) extras[k] += d.extras[k];
 
       let bw = bowling.get(bowler);
       if (!bw) {
         bw = { person: bowler, legalBalls: 0, overs: "0", maidens: 0, runs: 0, wickets: 0, wides: 0, noballs: 0 };
         bowling.set(bowler, bw);
       }
-      bw.runs += conceded(d.ball);
+      const charged = conceded(runsBat, d.extras);
+      bw.runs += charged;
       if (d.legal) bw.legalBalls += 1;
       if (extraType === "wides") bw.wides += 1;
       if (extraType === "noballs") bw.noballs += 1;
-      if (bowlerCredited(kind)) bw.wickets += 1;
+      // At most one wicket a ball is the bowler's, as aggregate.py counts it.
+      if (d.outs.some((w) => bowlerCredited(w.kind))) bw.wickets += 1;
       const ok = `${bowler}:${d.over}`;
       const o = overRuns.get(ok) ?? { bowler, runs: 0, legal: 0 };
-      o.runs += conceded(d.ball);
+      o.runs += charged;
       if (d.legal) o.legal += 1;
       overRuns.set(ok, o);
 
-      if (kind && out != null) {
-        const victim = bat(out)!;
-        victim.dismissal = { kind, bowler: bowlerCredited(kind) ? bowler : null, label: dismissalLabel(kind, bowlerCredited(kind) ? people[bowler]?.name ?? null : null) };
-        if (isWicket(d.ball)) {
-          fallOfWickets.push({ wicket: d.wickets, runs: d.runs, person: out, label: d.label });
+      if (d.outs.length) {
+        for (const w of d.outs) {
+          if (w.playerOut == null) continue;
+          const credited = bowlerCredited(w.kind);
+          bat(w.playerOut)!.dismissal = { kind: w.kind, bowler: credited ? bowler : null, label: dismissalLabel(w.kind, credited ? people[bowler]?.name ?? null : null) };
         }
+        fell.forEach((w, k) => fallOfWickets.push({ wicket: before + k + 1, runs: d.runs, person: w.playerOut, label: d.label }));
         current.unbroken = false;
         partnerships.push(current);
         current = null;
+        // A second wicket on the ball whose batter never faced (the next man
+        // in timed out) ends a partnership of no runs and no balls with the
+        // batter who survived the ball.
+        const gone = new Set(d.outs.map((w) => w.playerOut));
+        const survivors = [batter, nonStriker].filter((p) => !gone.has(p));
+        fell.slice(1).forEach((w, k) => {
+          if (survivors.length !== 1 || w.playerOut == null || w.playerOut === batter || w.playerOut === nonStriker) return;
+          const pair: [number, number] = [Math.min(survivors[0], w.playerOut), Math.max(survivors[0], w.playerOut)];
+          partnerships.push({ wicket: before + k + 2, batters: pair, runs: 0, balls: 0, unbroken: false });
+        });
       }
     }
     if (current) partnerships.push(current);
@@ -640,21 +672,39 @@ export function currentPartnership(card: InningsCard | undefined): Partnership |
 
 export type BallTone = "dot" | "run" | "boundary" | "wicket" | "extra";
 
+const EXTRA_SHORT: Record<ExtraKind, string> = { wides: "wd", noballs: "nb", byes: "b", legbyes: "lb", penalty: "p" };
+const EXTRA_NAME: Record<ExtraKind, [string, string]> = {
+  wides: ["wide", "wides"],
+  noballs: ["no-ball", "no-balls"],
+  byes: ["bye", "byes"],
+  legbyes: ["leg bye", "leg byes"],
+  penalty: ["penalty run", "penalty runs"],
+};
+
+/**
+ * The ticker's chip for a ball. A ball that cost a wicket is "W"; extras read
+ * as the ball's runs and its first kind ("5nb"), with every kind spelt out in
+ * the description ("1 no-ball, 4 byes"). A retirement costs no wicket, so it
+ * keeps the ball's own chip and is named in the description.
+ */
 export function ballLabel(b: Ball): { text: string; tone: BallTone; description: string } {
-  const [, , , , runsBat, ext, extraType, kind] = b;
-  if (kind) {
-    const runs = runsBat + ext;
-    return { text: "W", tone: "wicket", description: runs ? `${kind}, ${runs} run${runs === 1 ? "" : "s"}` : kind };
+  const [, , , , runsBat, ext, extraType] = b;
+  const outs = ballWickets(b);
+  const kinds = outs.map((w) => w.kind).join(" and ");
+  const runs = runsBat + ext;
+  if (outs.some((w) => !NOT_WICKETS.has(w.kind))) {
+    return { text: "W", tone: "wicket", description: runs ? `${kinds}, ${runs} run${runs === 1 ? "" : "s"}` : kinds };
   }
+  const also = kinds ? `, ${kinds}` : "";
   if (extraType) {
-    const short = { wides: "wd", noballs: "nb", byes: "b", legbyes: "lb", penalty: "p" }[extraType];
-    const name = { wides: "wide", noballs: "no-ball", byes: "bye", legbyes: "leg bye", penalty: "penalty" }[extraType];
-    const runs = runsBat + ext;
-    return { text: `${runs}${short}`, tone: "extra", description: `${runs} ${name}${runs === 1 ? "" : "s"}${runsBat ? `, ${runsBat} off the bat` : ""}` };
+    const e = ballExtras(b);
+    const parts = EXTRA_KINDS.filter((k) => e[k]).map((k) => `${e[k]} ${EXTRA_NAME[k][e[k] === 1 ? 0 : 1]}`);
+    if (runsBat) parts.push(`${runsBat} off the bat`);
+    return { text: `${runs}${EXTRA_SHORT[extraType]}`, tone: "extra", description: `${parts.join(", ") || `0 ${EXTRA_NAME[extraType][1]}`}${also}` };
   }
-  if (runsBat === 0) return { text: "•", tone: "dot", description: "dot ball" };
-  if (runsBat === 4 || runsBat === 6) return { text: String(runsBat), tone: "boundary", description: runsBat === 4 ? "four" : "six" };
-  return { text: String(runsBat), tone: "run", description: `${runsBat} run${runsBat === 1 ? "" : "s"}` };
+  if (runsBat === 0) return { text: "•", tone: "dot", description: `dot ball${also}` };
+  if (runsBat === 4 || runsBat === 6) return { text: String(runsBat), tone: "boundary", description: `${runsBat === 4 ? "four" : "six"}${also}` };
+  return { text: String(runsBat), tone: "run", description: `${runsBat} run${runsBat === 1 ? "" : "s"}${also}` };
 }
 
 // ---------------------------------------------------------------------------

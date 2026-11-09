@@ -17,6 +17,7 @@ import logging
 import os
 import subprocess
 import time
+from collections import defaultdict
 from pathlib import Path
 
 from . import corpus as corpus_mod
@@ -64,6 +65,11 @@ class Builder:
         self.matches: list[dict] = []
         self.venues = VenueBook(corpus.venues)
         self.teams = TeamBook()
+        # Person ids the corpus files under both genders. A person has one
+        # gender, so only one of their records can be exported; where each
+        # side played is kept for the warning that says which.
+        self.dual_gender = {pid for pid, genders in corpus.id_genders.items() if len(genders) > 1}
+        self.appearances: dict[str, list[tuple[str, str, str, str, str]]] = defaultdict(list)
 
     def aggregator(self, fmt: str, gender: str) -> Aggregator:
         fk = format_key(fmt, gender)
@@ -82,10 +88,64 @@ class Builder:
                                         country=venues.country(info.get("venue", ""),
                                                                info.get("city")))
         self.aggregator(fmt, gender).add_match(match, deliveries)
+        if self.dual_gender:
+            self._note_appearances(fmt, match, deliveries)
         row = build_match_row(raw, match_id, fmt, venue_key=key, country=match.country)
         self.matches.append(row)
         self.venues.add(row)
         self.teams.add(row, deliveries)
+
+    def _note_appearances(self, fmt: str, match, deliveries) -> None:
+        """Where each person filed under both genders played: (gender, format,
+        match id, name, team), from the XIs and the deliveries."""
+        seen: dict[str, tuple[str, str]] = {}
+        for team, squad in match.players.items():
+            for name in squad:
+                pid = match.registry.get(name)
+                if pid in self.dual_gender:
+                    seen.setdefault(pid, (name, team))
+        for d in deliveries:
+            for pid, name, team in ((d.batter_id, d.batter, d.batting_team),
+                                    (d.non_striker_id, d.non_striker, d.batting_team),
+                                    (d.bowler_id, d.bowler, d.bowling_team)):
+                if pid in self.dual_gender:
+                    seen.setdefault(pid, (name, team))
+        for pid, (name, team) in seen.items():
+            self.appearances[pid].append((match.gender, fmt, match.match_id, name, team))
+
+    def _warn_dual_gender(self, index: list[dict]) -> None:
+        """Name each person filed under both genders, with where each side
+        played, so a refresh log explains the record that export kept."""
+        kept = {row["id"]: row["gender"] for row in index}
+        for pid in sorted(self.appearances):
+            sides: dict[str, list[tuple[str, str, str, str]]] = defaultdict(list)
+            for gender, fmt, mid, name, team in self.appearances[pid]:
+                sides[gender].append((fmt, mid, name, team))
+            if len(sides) < 2:
+                continue
+            parts = []
+            for gender in sorted(sides):
+                rows = sides[gender]
+                names = " / ".join(sorted({name for _f, _m, name, _t in rows}))
+                teams = ", ".join(sorted({team for _f, _m, _n, team in rows if team}))
+                by_fmt = []
+                for fmt in FORMATS:
+                    mids = sorted((mid for f, mid, _n, _t in rows if f == fmt),
+                                  key=lambda m: (len(m), m))
+                    if mids:
+                        more = f" and {len(mids) - 10} more" if len(mids) > 10 else ""
+                        by_fmt.append(f"{fmt} {', '.join(mids[:10])}{more}")
+                balls = sum(r.bat_overall.balls + r.bowl_overall.balls
+                            for agg in self.aggregators.values() if agg.gender == gender
+                            for r in [agg.players.get(pid)] if r is not None)
+                parts.append(f"{gender} as {names} ({teams}): {len(rows)} "
+                             f"match{'es' if len(rows) != 1 else ''} ({'; '.join(by_fmt)}), "
+                             f"{balls} balls faced or bowled")
+            outcome = (f"players.json keeps the {kept[pid]} record (export keeps the side with "
+                       "more balls)" if pid in kept else
+                       "neither side reaches the export gates, so players.json has neither")
+            log.warning("person %s is filed under both genders: %s. Only one record can be "
+                        "exported: %s.", pid, "; and ".join(parts), outcome)
 
     # ------------------------------------------------------------------
     def write(self, out_dir: Path, *, metadata: dict, provenance: dict, fingerprint_payload: dict,
@@ -97,6 +157,7 @@ class Builder:
             agg.finalise()
 
         players = export_players(self.aggregators, metadata, out_dir, pretty=pretty)
+        self._warn_dual_gender(players["index"])
 
         ranks = featured_ranks((row["id"], row["startDate"], row["event"]) for row in self.matches)
         for row in self.matches:

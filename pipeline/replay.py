@@ -43,6 +43,7 @@ import gzip
 import json
 import logging
 import re
+import zlib
 from collections import defaultdict
 from pathlib import Path
 
@@ -401,6 +402,14 @@ def _check_replay(replay: dict, match: dict | None, bowled: dict, has_bowling: s
     if got != want:
         errors.append(f"{mid}: innings (team, runs, wickets, legal balls, penalty runs) are "
                       f"{got} in the replay but {want} in matches.json")
+    # The scorecard adds extras up by kind and the total from ball[5], so the
+    # two must agree (the TypeScript check fails on the same balls).
+    for n, inn in enumerate(replay["innings"]):
+        bad = [i for i, b in enumerate(inn["balls"]) if sum(ball_extras(b).values()) != b[5]]
+        if bad:
+            errors.append(f"{mid}: innings {n + 1} has {len(bad)} balls whose extras by kind do "
+                          f"not add up to their extras (first: ball {bad[0]}), so its scorecard "
+                          f"would not add up to its total")
 
     people = replay["people"]
     figures: dict[str, list[tuple]] = defaultdict(list)
@@ -460,7 +469,8 @@ def verify_replays(root: Path) -> tuple[list[str], dict[str, int]]:
             replay = json.loads(gzip.decompress(path.read_bytes()))
             errors += _check_replay(replay, matches.get(mid), bowled.get(mid, {}), has_bowling,
                                     team_figures)
-        except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+        except (OSError, EOFError, zlib.error, ValueError, KeyError, IndexError, TypeError,
+                AttributeError) as exc:
             errors.append(f"{mid}: could not check the replay ({type(exc).__name__}: {exc})")
             continue
         counts["replays"] += 1

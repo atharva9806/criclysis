@@ -431,6 +431,20 @@ class VerifyReplaysTests(unittest.TestCase):
         self.assertTrue(any(e.startswith(f"{changed}: ") and "player file" in e for e in errors),
                         errors)
 
+    def test_extras_by_kind_that_do_not_add_up_are_reported(self):
+        # The scorecard sums extras by kind and the total from ball[5]; a ball
+        # where the two disagree would show a scorecard that does not add up.
+        root = self.copy()
+        mid = self.matches[1][0]
+
+        def mismatch(r):
+            b = next(b for inn in r["innings"] for b in inn["balls"] if len(b) == 9 and b[5] > 0)
+            b.append({"legbyes": b[5] + 2})
+        self.rewrite(root, mid, mismatch)
+        errors, _counts = verify_replays(root)
+        self.assertTrue(any(e.startswith(f"{mid}: innings") and "do not add up" in e
+                            for e in errors), errors)
+
     def test_cli_exit_code(self):
         from pipeline.cli import main
         with self.assertLogs("pipeline", level="INFO") as logs:

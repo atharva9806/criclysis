@@ -246,7 +246,10 @@ export type InningsTotal = { team: string; runs: number; wickets: number; legalB
 export function inningsTotals(tl: Timeline, cursor = tl.deliveries.length): InningsTotal[] {
   const out: InningsTotal[] = [];
   tl.innings.forEach((inn, n) => {
-    if (cursor <= inn.start && !(cursor === inn.start && n === 0)) return;
+    // An innings shows once a ball of it is bowled; the first shows from the
+    // start, and at the end of the match so does a trailing innings with no
+    // deliveries (a forfeit), which matches.json also lists.
+    if (cursor < inn.start || (cursor === inn.start && n !== 0 && cursor < tl.deliveries.length)) return;
     const upto = Math.min(cursor, inn.end);
     const last = upto > inn.start ? tl.deliveries[upto - 1] : null;
     const complete = cursor >= inn.end;

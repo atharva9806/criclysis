@@ -443,6 +443,18 @@ describe("balls with extras of two kinds, penalty runs and two wickets (§1.9)",
     expect(inningsTotals(tl)).toEqual([{ team: "X", runs: 24, wickets: 3, legalBalls: 6, overs: "1" }]);
   });
 
+  it("lists a trailing innings with no deliveries once the match is over, as matches.json does", () => {
+    const forfeit: Replay = {
+      ...r,
+      innings: [...r.innings, { team: "Y", target: null, targetOvers: null, penaltyRuns: { pre: 0, post: 0 }, balls: [] }],
+    };
+    const ftl = buildTimeline(forfeit);
+    expect(inningsTotals(ftl).map((t) => [t.team, t.runs, t.wickets, t.legalBalls])).toEqual([["X", 24, 3, 6], ["Y", 0, 0, 0]]);
+    expect(scorecardAt(ftl).map((c) => c.total.runs)).toEqual([24, 0]);
+    // Mid-match it is not shown yet.
+    expect(inningsTotals(ftl, ftl.deliveries.length - 1).map((t) => t.team)).toEqual(["X"]);
+  });
+
   it("splits the extras by kind on the scorecard", () => {
     expect(card.extras).toEqual({ byes: 4, legbyes: 1, wides: 5, noballs: 2, penalty: 5, total: 17 });
     expect(card.batting.reduce((s, b) => s + b.runs, 0) + card.extras.total).toBe(card.total.runs);

@@ -23,6 +23,9 @@ import { buildTimeline, inningsTotals, scorecardAt } from "./engine";
 
 const DEFAULT_DIR = fileURLToPath(new URL("../../../../fixtures/data-out", import.meta.url));
 const dir = process.env.REPLAY_DATA_DIR ? resolve(process.cwd(), process.env.REPLAY_DATA_DIR) : DEFAULT_DIR;
+// Skipped only when no directory was asked for and the fixture is absent; an
+// explicit REPLAY_DATA_DIR without a build in it fails instead of passing.
+const run = Boolean(process.env.REPLAY_DATA_DIR) || existsSync(`${DEFAULT_DIR}/matches.json`);
 
 /**
  * fixtures/data-out's replays predate the extras breakdown (ball [9]) and can
@@ -46,7 +49,7 @@ type Figures = [balls: number, runs: number, wickets: number, maidens: number];
 const sorted = (rows: Figures[]) => JSON.stringify([...rows].sort((a, b) => a.join(",").localeCompare(b.join(","), "en", { numeric: true })));
 
 describe(`every replay in ${dir}`, () => {
-  it.runIf(existsSync(`${dir}/matches.json`))("agrees with matches.json and the player files", { timeout: 60 * 60_000 }, () => {
+  it.runIf(run)("agrees with matches.json and the player files", { timeout: 60 * 60_000 }, () => {
     const matches = new Map(readJson<MatchesFile>(`${dir}/matches.json`).matches.map((m) => [m.id, m]));
 
     // match id -> person id -> each innings' figures, from the player files.

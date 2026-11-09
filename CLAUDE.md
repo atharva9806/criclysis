@@ -42,9 +42,12 @@ real ball-by-ball data.
 | `pipeline/` | Python 3.11+, standard library only. Downloads Cricsheet, aggregates, analyses, fits the win-probability model and exports replays. CLI: `python -m pipeline --help` |
 | `tests/` | Python unit tests: `python -m unittest discover -s tests -p "test_*.py"` |
 | `web/` | Next.js 16 (App Router) + React 19 + TypeScript + Tailwind 4 + Drizzle ORM + PostgreSQL + Recharts |
+| `web/scripts/import/` | Importer from a build (`data/out`) into Postgres, and the fingerprint check: `npm run import`, `npm run check-fingerprint` |
 | `data/` | Small reference data (bowling styles). Generated output goes to `data/out/` and is gitignored |
-| `docs/` | Method write-ups (`WINPROB.md`, `DATA_SOURCES.md`) |
-| `.github/workflows/` | CI, plus the daily data refresh |
+| `fixtures/` | Committed builds for local work and CI: `data-out/` (110 men's matches, v2) and `data-out-v1/` (older men's sample for importer tests) |
+| `scripts/ci/` | CI helpers: refresh plan, smoke test and routes, log redaction, build-volume summary, and their tests |
+| `docs/` | `ARCHITECTURE.md` (design and output contract), `DATA_SOURCES.md` (sources, licences, coverage), `WINPROB.md` (win-probability method and validation), `OPERATIONS.md` (setup, refresh, recovery, local development), `screenshots/` |
+| `.github/workflows/` | CI (`ci.yml`), plus the daily data refresh (`refresh.yml`) |
 
 ## Working conventions
 
@@ -56,7 +59,10 @@ real ball-by-ball data.
 - Verify UI in a production build (`next build && next start`), not
   `next dev`: in this environment dev mode can render pages that never
   hydrate.
-- From the development sandbox, cricsheet.org is blocked. Men's archives
-  come from the GitHub-release mirror in `pipeline/sources/cricsheet.py`.
-  Women's data is only reachable from GitHub Actions.
+- No Cricsheet archives can be downloaded from the development sandbox:
+  cricsheet.org is blocked, and the pipeline's robots.txt check refuses the
+  GitHub-release mirror in `pipeline/sources/cricsheet.py`. Work locally
+  against the committed fixture `fixtures/data-out` (110 men's matches). The
+  full corpus, men's and women's, is built and checked only on GitHub
+  Actions (`refresh.yml`).
 - Hosting is free tier: Vercel for the web app, Neon for Postgres.

@@ -4,6 +4,7 @@
     python -m pipeline build     --genders male female
     python -m pipeline winprob   # fit and validate the win-probability models
     python -m pipeline replays   --all --genders male female
+    python -m pipeline verify-replays   # every replay against the rest of data/out
     python -m pipeline fingerprint --out data/out/fingerprint.json
     python -m pipeline fixtures  --out fixtures/data-out
     python -m pipeline all       # fetch then build
@@ -100,6 +101,26 @@ def cmd_replays(args) -> int:
     return 0 if index else 1
 
 
+def cmd_verify_replays(args) -> int:
+    from .replay import verify_replays
+    try:
+        errors, counts = verify_replays(Path(args.data))
+    except FileNotFoundError as exc:
+        log.error("%s", exc)
+        return 1
+    log.info("checked %d replays (%d innings), %d bowling innings from player files and "
+             "%d top bowlers from team files", counts["replays"], counts["innings"],
+             counts["bowlerInnings"], counts["teamBowlers"])
+    if errors:
+        log.error("%d mismatches between the replays and the build; the first %d:",
+                  len(errors), min(len(errors), args.max_errors))
+        for error in errors[:args.max_errors]:
+            log.error("  %s", error)
+        return 1
+    log.info("every replay agrees with matches.json, the player files and the team files")
+    return 0
+
+
 def cmd_fingerprint(args) -> int:
     from .export import write_json
     from .fingerprint import fingerprint
@@ -187,6 +208,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_genders(p_rp)
     p_rp.add_argument("--out", default=str(WEB_DATA_DIR))
     p_rp.set_defaults(func=cmd_replays)
+
+    p_vr = sub.add_parser("verify-replays",
+                          help="check every replay against matches.json and the player and "
+                               "team files")
+    p_vr.add_argument("--data", default=str(WEB_DATA_DIR),
+                      help="the build directory to check (default: %(default)s)")
+    p_vr.add_argument("--max-errors", type=int, default=20, dest="max_errors",
+                      help="how many mismatches to list (default: %(default)s)")
+    p_vr.set_defaults(func=cmd_verify_replays)
 
     p_fp = sub.add_parser("fingerprint", help="fingerprint the downloaded archives")
     add_formats(p_fp, choices=tuple(FORMATS))

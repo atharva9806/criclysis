@@ -6,6 +6,7 @@ import type { Fmt, Gender, Record5 } from "@/lib/contract/pipeline";
 import { DASH, FORMAT_LABEL, date, decided, formatKeyLabel, int, num, pct, winPct } from "@/lib/format";
 import { pageNav, qs } from "@/lib/params";
 import { DataCredit } from "./DataCredit";
+import { ScrollRegion } from "./ScrollRegion";
 import { eventLine, teamScores } from "./replay/ResultCard";
 import { Badge, EmptyState, SectionHeader, SegmentedLinks } from "./ui";
 
@@ -109,12 +110,12 @@ export function FormatTabs({ formats, active, href, label = "Format" }: { format
 export function TableWrap({ children, caption, sticky = true, className = "" }: { children: ReactNode; caption?: string; sticky?: boolean; className?: string }) {
   return (
     <div className={`card overflow-hidden ${className}`}>
-      <div className="table-scroll">
+      <ScrollRegion label={caption}>
         <table className={`data-table ${sticky ? "sticky-first" : ""}`}>
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           {children}
         </table>
-      </div>
+      </ScrollRegion>
     </div>
   );
 }

@@ -127,7 +127,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
               <p className="label">In this build</p>
               <GenderToggle gender={gender} href={href} />
             </div>
-            {meta ? (
+            {meta && !mine.length ? (
+              <p className="mt-4 text-sm leading-relaxed text-muted">
+                No {word.toLowerCase()} internationals in this build. Data up to{" "}
+                <time dateTime={meta.dataAsOf} className="font-semibold text-fg">
+                  {date(meta.dataAsOf)}
+                </time>
+                , refreshed daily from Cricsheet.
+              </p>
+            ) : meta ? (
               <>
                 <dl className="mt-4 grid grid-cols-2 gap-4">
                   <div>
@@ -174,61 +182,69 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
           </ul>
         </nav>
 
-        <Section id="featured" title="Featured replays" sub="Real finals, replayed ball by ball with win probability, projected and par scores where the model applies.">
-          <Suspense key={gender} fallback={<CardGridSkeleton label="Loading replays" count={3} height="h-44" />}>
-            <FeaturedReplays gender={gender} />
-          </Suspense>
-        </Section>
-
-        <Section
-          id="coverage"
-          title="Coverage"
-          sub="Ball-by-ball records start in the early 2000s for most teams, so earlier careers are only partly covered."
-        >
-          {mine.length ? (
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {mine.map((f) => (
-                <li key={f.formatKey} className="card p-5">
-                  <p className="font-semibold">{formatKeyLabel(f.formatKey)}</p>
-                  <p className="mt-2 text-stat tabular-nums">
-                    {int(f.matches)} <span className="text-sm font-normal text-muted">matches</span>
-                  </p>
-                  <p className="mt-1 text-sm text-muted">
-                    {int(f.players)} players · {int(f.deliveries)} deliveries
-                  </p>
-                  <p className="text-sm text-muted">
-                    <time dateTime={f.firstDate}>{date(f.firstDate)}</time> to <time dateTime={f.lastDate}>{date(f.lastDate)}</time>
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : meta ? (
+        {meta && !mine.length ? (
+          <div className="mt-12">
             <NoGenderData gender={gender} what="matches" menHref="/" />
-          ) : (
-            <EmptyState title="No data has been imported yet">Coverage appears after the first Cricsheet import.</EmptyState>
-          )}
-        </Section>
+          </div>
+        ) : (
+          <>
+            <Section id="featured" title="Featured replays" sub="Real finals, replayed ball by ball with win probability, projected and par scores where the model applies.">
+              <Suspense key={gender} fallback={<CardGridSkeleton label="Loading replays" count={3} height="h-44" />}>
+                <FeaturedReplays gender={gender} />
+              </Suspense>
+            </Section>
 
-        <Section id="latest" title="Latest results" sub={meta ? `From the daily Cricsheet import; matches up to ${date(meta.dataAsOf)}.` : undefined}>
-          <Suspense key={gender} fallback={<CardGridSkeleton label="Loading results" />}>
-            <LatestResults gender={gender} />
-          </Suspense>
-        </Section>
+            <Section
+              id="coverage"
+              title="Coverage"
+              sub="Ball-by-ball records start in the early 2000s for most teams, so earlier careers are only partly covered."
+            >
+              {mine.length ? (
+                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {mine.map((f) => (
+                    <li key={f.formatKey} className="card p-5">
+                      <p className="font-semibold">{formatKeyLabel(f.formatKey)}</p>
+                      <p className="mt-2 text-stat tabular-nums">
+                        {int(f.matches)} <span className="text-sm font-normal text-muted">matches</span>
+                      </p>
+                      <p className="mt-1 text-sm text-muted">
+                        {int(f.players)} players · {int(f.deliveries)} deliveries
+                      </p>
+                      <p className="text-sm text-muted">
+                        <time dateTime={f.firstDate}>{date(f.firstDate)}</time> to <time dateTime={f.lastDate}>{date(f.lastDate)}</time>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : meta ? (
+                <NoGenderData gender={gender} what="matches" menHref="/" />
+              ) : (
+                <EmptyState title="No data has been imported yet">Coverage appears after the first Cricsheet import.</EmptyState>
+              )}
+            </Section>
 
-        <Section
-          id="leaders"
-          title="Leaders"
-          sub={fk ? `${formatKeyLabel(fk)} career totals within Cricsheet's coverage, with the innings behind each.` : undefined}
-          actions={fmt ? <FormatTabs formats={fmts} active={fmt} href={(f) => genderHref("/", gender, { f })} /> : null}
-        >
-          {fk ? (
-            <Suspense key={fk} fallback={<SectionSkeleton label="Loading leaders" />}>
-              <LeaderBoards fk={fk} />
-            </Suspense>
-          ) : (
-            <NoGenderData gender={gender} what="players" menHref="/" />
-          )}
-        </Section>
+            <Section id="latest" title="Latest results" sub={meta ? `From the daily Cricsheet import; matches up to ${date(meta.dataAsOf)}.` : undefined}>
+              <Suspense key={gender} fallback={<CardGridSkeleton label="Loading results" />}>
+                <LatestResults gender={gender} />
+              </Suspense>
+            </Section>
+
+            <Section
+              id="leaders"
+              title="Leaders"
+              sub={fk ? `${formatKeyLabel(fk)} career totals within Cricsheet's coverage, with the innings behind each.` : undefined}
+              actions={fmt ? <FormatTabs formats={fmts} active={fmt} href={(f) => genderHref("/", gender, { f })} /> : null}
+            >
+              {fk ? (
+                <Suspense key={fk} fallback={<SectionSkeleton label="Loading leaders" />}>
+                  <LeaderBoards fk={fk} />
+                </Suspense>
+              ) : (
+                <NoGenderData gender={gender} what="players" menHref="/" />
+              )}
+            </Section>
+          </>
+        )}
       </div>
     </>
   );

@@ -67,6 +67,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
         ) : null}
       </FilterForm>
       <div className="mt-6">
+        <h2 className="sr-only">Results</h2>
         <Suspense key={JSON.stringify(params) + q.page} fallback={<CardGridSkeleton label="Loading matches" count={9} />}>
           <Results q={q} teamLabel={q.teamId ? teams.find((t) => t.id === q.teamId)?.label : undefined} />
         </Suspense>

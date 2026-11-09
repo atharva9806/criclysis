@@ -44,8 +44,7 @@ export default function CalibrationChart({ chase, firstInnings }: { chase: Calib
           axisLine={{ stroke: CHART.grid }}
           tickLine={false}
           name="Predicted"
-          label={{ value: "Predicted", position: "insideBottom", offset: -2, fontSize: 11, fill: CHART.axis }}
-          height={36}
+          height={28}
         />
         <YAxis
           type="number"
@@ -58,7 +57,6 @@ export default function CalibrationChart({ chase, firstInnings }: { chase: Calib
           tickLine={false}
           width={44}
           name="Won"
-          label={{ value: "Won", angle: -90, position: "insideLeft", offset: 10, fontSize: 11, fill: CHART.axis }}
         />
         <ZAxis range={[36, 36]} />
         <ReferenceLine
@@ -71,13 +69,14 @@ export default function CalibrationChart({ chase, firstInnings }: { chase: Calib
           ifOverflow="hidden"
         />
         <Tooltip content={<Tip />} cursor={{ stroke: CHART.ref, strokeDasharray: "3 3" }} isAnimationActive={false} />
-        <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+        <Legend verticalAlign="top" align="right" height={28} wrapperStyle={{ fontSize: 12 }} />
         <Scatter
           name="Chase"
           data={chase.map((d) => ({ ...d, series: "Chase" }))}
           fill={CHART.series[0]}
           line={{ stroke: CHART.series[0], strokeWidth: 1.5 }}
           shape="circle"
+          legendType="circle"
           isAnimationActive={!still}
         />
         <Scatter
@@ -86,6 +85,7 @@ export default function CalibrationChart({ chase, firstInnings }: { chase: Calib
           fill={CHART.series[1]}
           line={{ stroke: CHART.series[1], strokeWidth: 1.5, strokeDasharray: "5 3" }}
           shape="diamond"
+          legendType="diamond"
           isAnimationActive={!still}
         />
       </ScatterChart>

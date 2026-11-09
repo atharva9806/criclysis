@@ -390,8 +390,8 @@ async function Analysis({ slug, fmt, gender }: { slug: string; fmt: Fmt; gender:
         {p.form.batting || p.form.bowling ? (
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {p.form.batting ? (
-              <div className="card p-5">
                 <Stat
+                  className="card p-5"
                   label={`Last ${p.form.batting.innings} innings batting`}
                   value={int(p.form.batting.runs)}
                   unit={`runs, ${plural(p.form.batting.outs, "dismissal")}`}
@@ -402,17 +402,15 @@ async function Analysis({ slug, fmt, gender }: { slug: string; fmt: Fmt; gender:
                     </>
                   }
                 />
-              </div>
             ) : null}
             {p.form.bowling ? (
-              <div className="card p-5">
                 <Stat
+                  className="card p-5"
                   label={`Last ${p.form.bowling.innings} innings bowling`}
                   value={int(p.form.bowling.wickets)}
                   unit={`wickets for ${int(p.form.bowling.runsConceded)} runs`}
                   sample={`${plural(p.form.bowling.balls, "ball")} · ${date(p.form.bowling.from)} to ${date(p.form.bowling.to)}`}
                 />
-              </div>
             ) : null}
           </dl>
         ) : (

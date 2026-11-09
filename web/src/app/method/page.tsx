@@ -125,14 +125,17 @@ function ModelCard({ m }: { m: WinModelSummary }) {
           {int(m.testMatches)} holdout matches{m.holdoutFrom ? ` from ${date(m.holdoutFrom)}` : ""} · trained on {int(m.trainMatches)}
         </p>
       </div>
-      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-        <Stat label="Chase Brier" value={brier(m.chase.brier)} sample={`baseline ${brier(m.chase.baselineBrier)} · ${int(m.chase.states)} states`} />
-        <Stat label="Chase skill" value={skill(m.chase.skill)} sample="better than the baseline" />
-        <Stat label="1st-innings Brier" value={brier(m.firstInnings.brier)} sample={`baseline ${brier(m.firstInnings.baselineBrier)} · ${int(m.firstInnings.states)} states`} />
-        <Stat label="Par" value={int(m.par)} unit="runs" sample={`format par, from ${int(m.matches)} matches`} />
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5">
+        <Stat label="Chase Brier" value={brier(m.chase.brier)} sample={`vs ${brier(m.chase.baselineBrier)} baseline (skill ${skill(m.chase.skill)}) · ${int(m.chase.states)} ball states`} />
+        <Stat label="First-innings Brier" value={brier(m.firstInnings.brier)} sample={`vs ${brier(m.firstInnings.baselineBrier)} baseline (skill ${skill(m.firstInnings.skill)}) · ${int(m.firstInnings.states)} ball states`} />
+        <Stat label="Par" value={int(m.par)} unit="runs" sample={`format par; model fitted on ${int(m.matches)} matches`} />
+        <Stat label="Recency half-life" value={m.halfLifeYears == null ? "–" : num(m.halfLifeYears, 0)} unit={m.halfLifeYears == null ? undefined : "years"} sample="how fast older matches lose weight" />
       </dl>
       <div className="mt-6">
-        <p className="label mb-2">Calibration on the holdout</p>
+        <p className="label">Calibration on the holdout</p>
+        <p className="mb-2 mt-1 text-xs text-muted">
+          Across: the model&apos;s predicted chance, in 10% bins. Up: how often that side actually won. On the dashed line, predictions match outcomes.
+        </p>
         {chase.length || first.length ? (
           <ChartFrame
             className="h-72"
@@ -392,7 +395,10 @@ export default async function MethodPage() {
                 })}
               </tbody>
             </TableWrap>
-            <p className="mt-2 text-sm text-muted">The players who meet the cohort thresholds above, per format; medians are of those players&apos; career figures.</p>
+            <p className="mt-2 text-sm text-muted">
+              The players who meet the cohort thresholds above, per format; medians are of those players&apos; career figures. A dash means no cohort
+              for that discipline in this build.
+            </p>
           </div>
         ) : null}
       </Section>

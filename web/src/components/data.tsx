@@ -204,7 +204,7 @@ export function ReplayGrid({ matches, cols = 3 }: { matches: MatchRow[]; cols?: 
 export function MatchGrid({ matches, empty }: { matches: MatchRow[]; empty: ReactNode }) {
   if (!matches.length) return typeof empty === "string" ? <Muted>{empty}</Muted> : <>{empty}</>;
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {matches.map((m) => (
         <li key={m.id}>
           <MatchCard m={m} />

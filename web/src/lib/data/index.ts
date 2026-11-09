@@ -5,7 +5,7 @@
  */
 export { DATASET_TAG } from "./cache";
 export { getDatasetMeta } from "./meta";
-export { getWinModel } from "./models";
+export { getWinModel, listWinModels, type WinModelSummary } from "./models";
 export { getLatestResults, getMatch, listMatches, listMatchYears, listReplayable } from "./matches";
 export { getReplay, getReplayContext } from "./replays";
 export { getLeaders, getPlayerHeader, getPlayerNames, getPlayerProfile, getPlayerSummary, listPlayers } from "./players";

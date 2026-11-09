@@ -131,13 +131,13 @@ async function PlayerMode({ p, fmt, meta }: { p?: string; fmt?: ReturnType<typeo
         <>
           <Section title={`${dossier.player.name}, ${formatKeyLabel(dossier.formatKey)}`} sub={<Link href={`/players/${dossier.player.slug}${qs({ f })}`} className="link">Full profile →</Link>}>
             {dossier.batting ? (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Evidence title="Bowling to them: where to attack" claims={dossier.batting.attack} empty="No batting weakness clears the thresholds in this format." />
                 <Evidence title="Bowling to them: what to avoid" claims={dossier.batting.avoid} empty="No batting strength clears the thresholds in this format." />
               </div>
             ) : null}
             {dossier.bowling ? (
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Evidence title="Batting against them: where they leak" claims={dossier.bowling.weaknesses} empty="No bowling weakness clears the thresholds in this format." />
                 <Evidence title="Batting against them: where they are strongest" claims={dossier.bowling.strengths} empty="No bowling strength clears the thresholds in this format." />
               </div>
@@ -192,7 +192,7 @@ async function TeamMode({ team, opp, fmt, minMatches }: { team?: string; opp?: s
       ) : (
         <>
           <Section title={`${plan.team.label} v ${plan.opponent.label}, ${formatKeyLabel(plan.formatKey)}`} sub={`Win percentages are shown from ${minMatches} decided matches.`}>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {plan.lines.map((g) => (
                 <div key={g.heading} className="card p-5">
                   <h3 className="font-semibold">{g.heading}</h3>
@@ -208,7 +208,7 @@ async function TeamMode({ team, opp, fmt, minMatches }: { team?: string; opp?: s
             </div>
           </Section>
           <Section title={`${plan.opponent.label}'s leading players`} sub="Their two most significant weaknesses in this format, where they have a profile.">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <KeyPlayers title="Batters" f={f} players={plan.opponentBatters.map((b) => ({ ...b, stat: `${int(b.runs)} runs in ${plural(b.innings, "innings", "innings")}` }))} />
               <KeyPlayers title="Bowlers" f={f} players={plan.opponentBowlers.map((b) => ({ ...b, stat: `${int(b.wickets)} wickets in ${plural(b.innings, "innings", "innings")}` }))} />
             </div>

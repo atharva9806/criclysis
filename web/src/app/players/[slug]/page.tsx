@@ -9,7 +9,8 @@ import { fmtOfKey } from "@/lib/data/rows";
 import { DASH, FORMAT_LABEL, capitalise, date, formatKeyLabel, genderWord, int, num, plural, splitLabel, type LabelContext } from "@/lib/format";
 import { fmtParam, qs, type SearchParams } from "@/lib/params";
 import { FormatTabs, Muted, PageHeader, Section, SplitTable, TableWrap, genderHref } from "@/components/data";
-import { ChartFrame, PercentileRadar, YearBars, ordinal } from "@/components/charts/Charts";
+import { ChartFrame, PercentileRadar, YearBars } from "@/components/charts/Charts";
+import { ordinal } from "@/components/numbers";
 import { SectionSkeleton, TableSkeleton } from "@/components/Loading";
 import { Badge, Stat, StatGrid } from "@/components/ui";
 
@@ -233,7 +234,7 @@ async function Analysis({ slug, fmt, gender }: { slug: string; fmt: Fmt; gender:
             How these are computed
           </Link>
         </p>
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Claims title="Strengths" kind="strength" claims={p.strengths} empty="None in this format: no split clears the sample and percentile thresholds." />
           <Claims title="Weaknesses" kind="weakness" claims={p.weaknesses} empty="None in this format: no split clears the sample and percentile thresholds." />
         </div>
@@ -241,7 +242,7 @@ async function Analysis({ slug, fmt, gender }: { slug: string; fmt: Fmt; gender:
 
       <Section id="profile" title="Percentile profile" sub="Where each measure ranks among comparable players; 50 is the cohort median.">
         {p.profile.length ? (
-          <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.1fr]">
             <div className="card p-4">
               <ChartFrame
                 label={`Radar chart of ${p.player.name}'s percentiles: ${p.profile.map((a) => `${a.label} ${ordinal(a.percentile)}`).join(", ")}.`}
@@ -387,7 +388,7 @@ async function Analysis({ slug, fmt, gender }: { slug: string; fmt: Fmt; gender:
 
       <Section id="form" title="Recent form" sub="The last innings in this format, next to the career figures.">
         {p.form.batting || p.form.bowling ? (
-          <dl className="grid gap-3 sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {p.form.batting ? (
               <div className="card p-5">
                 <Stat
@@ -497,7 +498,7 @@ async function Analysis({ slug, fmt, gender }: { slug: string; fmt: Fmt; gender:
 
       {how.length || kinds.length || byType.length ? (
         <Section id="dismissals" title="Dismissals">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {how.length ? <CountBars label="How they got out" caption="{n} dismissals" rows={rows(how, capitalise)} /> : null}
             {byType.length ? <CountBars label="Dismissed by bowling type" caption="{n} dismissals where the bowler's type is known" rows={rows(byType, (s) => ctx.bowlingTypes[s]?.label ?? s)} /> : null}
             {kinds.length ? <CountBars label="Wickets taken, by kind" caption="{n} wickets" rows={rows(kinds, capitalise)} /> : null}

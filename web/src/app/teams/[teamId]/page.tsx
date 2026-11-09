@@ -176,7 +176,7 @@ async function TeamBody({ teamId, fmt, label }: { teamId: string; fmt: Fmt; labe
       </Section>
 
       <Section id="phases" title="Scoring by phase" sub="Team totals including extras, on legal balls.">
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <div>
             <h3 className="mb-3 font-semibold">Batting</h3>
             <PhaseTable rows={d.phases.batting} caption="Batting by phase" />
@@ -225,7 +225,7 @@ async function TeamBody({ teamId, fmt, label }: { teamId: string; fmt: Fmt; labe
       </Section>
 
       <Section id="players" title="Leading players" sub={`For ${t.team.label} only, in this format.`}>
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           {d.topBatters.length ? (
             <TableWrap caption="Top batters">
               <thead>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import ReplayPlayer from "@/components/replay/ReplayPlayer";
@@ -34,7 +35,7 @@ function ReplaySkeleton() {
         <Skeleton className="h-10 w-3/4 max-w-xl" />
         <Skeleton className="h-4 w-1/2" />
       </div>
-      <div className="mt-8 grid gap-5 lg:grid-cols-3" aria-hidden="true">
+      <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-3" aria-hidden="true">
         <div className="space-y-5 lg:col-span-2">
           <Skeleton className="h-64 rounded-panel" />
           <Skeleton className="h-28 rounded-card" />
@@ -68,6 +69,14 @@ export default async function ReplayPage({ params }: Props) {
 
   return (
     <div className="page">
+      <nav aria-label="Breadcrumb" className="mb-3 flex flex-wrap gap-x-4">
+        <Link href={match.gender === "female" ? "/live?gender=women" : "/live"} className="-ml-1 inline-flex min-h-9 items-center gap-1 rounded-control px-1 text-sm font-medium text-muted hover:text-fg">
+          <span aria-hidden="true">←</span> Live and replays
+        </Link>
+        <Link href={`/matches/${match.id}`} className="inline-flex min-h-9 items-center rounded-control px-1 text-sm font-medium text-muted hover:text-fg">
+          Full scorecard
+        </Link>
+      </nav>
       <Suspense fallback={<ReplaySkeleton />}>
         <Player match={match} stored={stored} />
       </Suspense>

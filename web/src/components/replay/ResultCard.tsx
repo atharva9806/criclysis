@@ -28,25 +28,25 @@ export default function ResultCard({ m }: { m: MatchRow }) {
   const event = eventLine(m);
   return (
     <article className="card flex h-full flex-col p-5">
-      <p className="text-xs text-[#6e6e73]">
+      <p className="text-xs text-muted">
         {formatDate(m.endDate)} · {formatKeyLabel(m.format, m.gender)}
       </p>
-      {event && <p className="mt-0.5 truncate text-xs text-[#6e6e73]">{event}</p>}
+      {event && <p className="mt-0.5 truncate text-xs text-muted">{event}</p>}
       <h3 className="mt-3 space-y-1">
         {teamScores(m).map((t) => (
           <span key={t.team} className="flex items-baseline justify-between gap-3 text-[15px]">
             <span className={`truncate ${m.result.winner === t.team ? "font-semibold" : ""}`}>{t.team}</span>
-            <span className="shrink-0 text-sm tabular-nums text-[#1d1d1f]">{t.score || "–"}</span>
+            <span className="shrink-0 text-sm tabular-nums text-fg">{t.score || "–"}</span>
           </span>
         ))}
       </h3>
-      <p className="mt-3 text-sm text-[#6e6e73]">{m.result.text || "Result not recorded"}</p>
+      <p className="mt-3 text-sm text-muted">{m.result.text || "Result not recorded"}</p>
       <p className="mt-auto flex gap-4 pt-4 text-sm font-medium">
-        <Link href={`/matches/${m.id}`} className="text-[#0071e3] hover:underline">
+        <Link href={`/matches/${m.id}`} className="link">
           Scorecard<span className="sr-only">: {m.team1} v {m.team2}, {formatDate(m.endDate)}</span>
         </Link>
         {m.hasReplay && (
-          <Link href={`/live/${m.id}`} className="text-[#0071e3] hover:underline">
+          <Link href={`/live/${m.id}`} className="link">
             Replay<span className="sr-only">: {m.team1} v {m.team2}, {formatDate(m.endDate)}</span>
           </Link>
         )}

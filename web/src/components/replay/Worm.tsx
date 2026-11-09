@@ -58,31 +58,31 @@ export default function Worm({ timeline, cursor, maxOvers }: { timeline: Timelin
     function WicketDot({ cx, cy, payload, index }: DotProps) {
       const w = payload?.[`w${n}`] ?? 0;
       if (!w || cx == null || cy == null) return <g key={`d${n}-${index}`} />;
-      return <circle key={`d${n}-${index}`} cx={cx} cy={cy} r={4} fill={TEAM_COLORS[n]} stroke="#fff" strokeWidth={2} />;
+      return <circle key={`d${n}-${index}`} cx={cx} cy={cy} r={4} fill={TEAM_COLORS[n]} stroke="var(--surface)" strokeWidth={2} />;
     };
 
   return (
     <section aria-labelledby="worm-title" className="card p-5 sm:p-6">
-      <h2 id="worm-title" className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73]">
+      <h2 id="worm-title" className="card-title">
         Worm
       </h2>
-      <p className="mt-1 text-xs text-[#6e6e73]">Runs after each over. Dots mark overs in which wickets fell.</p>
+      <p className="mt-1 text-xs text-muted">Runs after each over. Dots mark overs in which wickets fell.</p>
       {rows.length === 0 ? (
-        <p className="mt-3 text-sm text-[#6e6e73]">No overs bowled yet.</p>
+        <p className="mt-3 text-sm text-muted">No overs bowled yet.</p>
       ) : (
-        <div className="mt-3 h-56 sm:h-64" role="img" aria-label={`Worm chart of runs by over for ${teams.join(" and ")}. The scorecard has the same totals.`}>
+        <>
+        <div className="mt-3 h-56 sm:h-64" role="img" aria-label={`Worm chart of runs by over for ${teams.join(" and ")}. The table below the chart has the same values.`}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-              <CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false} />
-              <XAxis type="number" dataKey="x" domain={[0, maxOvers]} ticks={ticks} tick={{ fontSize: 11, fill: "#6e6e73" }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, runTicks[runTicks.length - 1]]} ticks={runTicks} tick={{ fontSize: 11, fill: "#6e6e73" }} axisLine={false} tickLine={false} width={44} />
+            <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -12 }} accessibilityLayer={false}>
+              <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+              <XAxis type="number" dataKey="x" domain={[0, maxOvers]} ticks={ticks} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, runTicks[runTicks.length - 1]]} ticks={runTicks} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} width={44} />
               <Tooltip
                 isAnimationActive={false}
                 labelFormatter={(x) => `After ${x} overs`}
                 formatter={(v, key) => [String(v), teams[Number(String(key).slice(1))] ?? String(key)]}
-                contentStyle={{ borderRadius: 14, border: "none", boxShadow: "0 10px 30px rgba(0,0,0,0.12)", fontSize: 12 }}
               />
-              <Legend iconType="plainline" wrapperStyle={{ fontSize: 12 }} formatter={(key) => <span className="text-[#1d1d1f]">{teams[Number(String(key).slice(1))] ?? key}</span>} />
+              <Legend iconType="plainline" wrapperStyle={{ fontSize: 12 }} formatter={(key) => <span className="text-fg">{teams[Number(String(key).slice(1))] ?? key}</span>} />
               {teams.map((t, n) => (
                 <Line
                   key={t + n}
@@ -93,12 +93,48 @@ export default function Worm({ timeline, cursor, maxOvers }: { timeline: Timelin
                   connectNulls
                   isAnimationActive={false}
                   dot={dot(n)}
-                  activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2 }}
+                  activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }}
                 />
               ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
+        <details className="group mt-3 text-sm">
+          <summary className="inline-flex min-h-9 items-center font-medium text-accent">
+            <span className="group-open:hidden">View as table</span>
+            <span className="hidden group-open:inline">Hide table</span>
+          </summary>
+          <div className="table-scroll mt-2 max-h-64 overflow-y-auto rounded-control border border-line">
+            <table className="data-table text-xs">
+              <caption className="sr-only">Runs and wickets after each over</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Overs</th>
+                  {teams.map((t, n) => (
+                    <th key={t + n} scope="col" className="num">
+                      {t}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.x}>
+                    <th scope="row" className="!font-normal tabular-nums">
+                      {r.x}
+                    </th>
+                    {teams.map((t, n) => (
+                      <td key={t + n} className="num">
+                        {r[`i${n}`] == null ? "–" : `${r[`i${n}`]}/${r[`c${n}`] ?? 0}`}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+        </>
       )}
     </section>
   );

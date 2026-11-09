@@ -152,7 +152,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
             sub={A.summary!.formatKey && B.summary!.formatKey ? `${formatKeyLabel(A.summary!.formatKey)} and ${formatKeyLabel(B.summary!.formatKey)} cohorts.` : undefined}
           >
             {axes.length ? (
-              <div className="grid gap-6 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div className="card p-4">
                   <ChartFrame
                     label={`Radar chart comparing percentiles of ${A.summary!.player.name} and ${B.summary!.player.name}.`}

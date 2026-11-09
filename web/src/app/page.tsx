@@ -72,7 +72,7 @@ async function LatestResults({ gender }: { gender: Gender }) {
 async function LeaderBoards({ fk }: { fk: FormatKey }) {
   const [runs, wickets] = await Promise.all([getLeaders(fk, "runs", 8), getLeaders(fk, "wickets", 8)]);
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <Leaders title="Most runs" rows={runs} unit="runs" sampleUnit="inns" />
       <Leaders title="Most wickets" rows={wickets} unit="wkts" sampleUnit="inns bowled" />
     </div>
@@ -103,7 +103,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   return (
     <>
       <section aria-labelledby="hero-title" className="border-b border-line bg-surface">
-        <div className="mx-auto grid max-w-page gap-8 px-4 py-10 sm:px-6 md:py-16 lg:grid-cols-[1.5fr_1fr] lg:items-end">
+        <div className="mx-auto grid grid-cols-1 max-w-page gap-8 px-4 py-10 sm:px-6 md:py-16 lg:grid-cols-[1.5fr_1fr] lg:items-end">
           <div className="min-w-0">
             <p className="eyebrow">International cricket analytics</p>
             <h1 id="hero-title" className="mt-3 text-display text-balance">
@@ -157,7 +157,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
 
       <div className="page">
         <nav aria-label="Sections">
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {ENTRIES.map((e) => (
               <li key={e.href}>
                 <Link href={e.gendered ? genderHref(e.href, gender) : e.href} className="card-link group flex h-full flex-col p-5">
@@ -186,7 +186,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
           sub="Ball-by-ball records start in the early 2000s for most teams, so earlier careers are only partly covered."
         >
           {mine.length ? (
-            <ul className="grid gap-3 sm:grid-cols-3">
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {mine.map((f) => (
                 <li key={f.formatKey} className="card p-5">
                   <p className="font-semibold">{formatKeyLabel(f.formatKey)}</p>

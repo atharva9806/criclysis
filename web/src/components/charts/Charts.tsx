@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ordinal } from "../numbers";
 
 /**
  * Chart colours are CSS variables from app/globals.css, so every chart
@@ -39,7 +40,21 @@ export function useReducedMotion(): boolean {
  * The accessible frame every chart sits in: an image with a name, and a
  * link to the table with the same values ("view as table").
  */
-export function ChartFrame({ label, tableId, children, className = "h-64" }: { label: string; tableId?: string; children: ReactNode; className?: string }) {
+export function ChartFrame({
+  label,
+  tableId,
+  table,
+  children,
+  className = "h-64",
+}: {
+  label: string;
+  /** The id of a table elsewhere on the page with the same values. */
+  tableId?: string;
+  /** Or the table itself, behind a "View as table" disclosure. */
+  table?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <figure className="m-0">
       <div role="img" aria-label={label} className={className}>
@@ -52,15 +67,17 @@ export function ChartFrame({ label, tableId, children, className = "h-64" }: { l
           </a>
         </figcaption>
       ) : null}
+      {table ? (
+        <details className="group mt-3">
+          <summary className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-accent">
+            <span className="group-open:hidden">View as table</span>
+            <span className="hidden group-open:inline">Hide table</span>
+          </summary>
+          <div className="mt-2">{table}</div>
+        </details>
+      ) : null}
     </figure>
   );
-}
-
-/** "1st", "22nd", "63rd", "70th". */
-export function ordinal(n: number): string {
-  const v = Math.round(n);
-  const s = v % 100 >= 11 && v % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[v % 10] ?? "th";
-  return `${v}${s}`;
 }
 
 /** Percentiles against the cohort (0-100), one spoke per measure; one polygon per series. */

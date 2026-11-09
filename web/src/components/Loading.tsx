@@ -31,7 +31,7 @@ export function HeaderSkeleton() {
 export function CardGridSkeleton({ label = "Loading", count = 6, height = "h-40" }: { label?: string; count?: number; height?: string }) {
   return (
     <Busy label={label}>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: count }, (_, i) => (
           <div key={i} className={`card p-5 ${height}`}>
             <Skeleton className="h-3 w-1/2" />

@@ -78,7 +78,7 @@ export default async function MatchPage({ params }: Props) {
           </div>
           {match.result.method ? <Badge tone="warning">{match.result.method}</Badge> : null}
         </div>
-        <dl className="mt-4 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-3">
+        <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-3">
           {toss ? (
             <div>
               <dt className="label">Toss</dt>

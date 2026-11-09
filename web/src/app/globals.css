@@ -253,6 +253,10 @@
   .label {
     @apply text-label uppercase text-muted;
   }
+  /* The title of a card or panel (replay widgets, model cards). */
+  .card-title {
+    @apply text-sm font-semibold text-fg;
+  }
 
   /* ---------------------------------------------------------------- badges */
   .badge {

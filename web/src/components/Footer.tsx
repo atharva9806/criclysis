@@ -24,7 +24,7 @@ const COLUMNS: { title: string; links: [string, string][] }[] = [
 export function Footer() {
   return (
     <footer className="mt-16 border-t border-line bg-surface">
-      <div className="mx-auto grid max-w-page gap-8 px-4 py-10 text-sm sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="mx-auto grid grid-cols-1 max-w-page gap-8 px-4 py-10 text-sm sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
         <div className="max-w-md">
           <p className="font-bold tracking-tight">Criclysis</p>
           <p className="mt-2 leading-relaxed text-muted">

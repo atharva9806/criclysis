@@ -32,13 +32,13 @@ function ChartTooltip({ active, payload, teams }: { active?: boolean; payload?: 
   if (!active || !row) return null;
   const leader = row.p >= 0.5 ? 0 : 1;
   return (
-    <div className="rounded-xl bg-white px-3 py-2 text-xs shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+    <div className="rounded-control border border-line bg-surface px-3 py-2 text-xs shadow-pop">
       <p className="flex items-center gap-2">
         <span aria-hidden className="h-0.5 w-3 rounded-full" style={{ background: TEAM_COLORS[leader] }} />
         <span className="text-sm font-semibold">{pct(leader === 0 ? row.p : 1 - row.p)}</span>
-        <span className="text-[#6e6e73]">{teams[leader]}</span>
+        <span className="text-muted">{teams[leader]}</span>
       </p>
-      <p className="mt-1 text-[#6e6e73] tabular-nums">
+      <p className="mt-1 text-muted tabular-nums">
         {row.seq < 0 ? "Before the first ball" : `Innings ${row.innings}, over ${row.label} · ${row.score}`}
       </p>
     </div>
@@ -68,10 +68,10 @@ export default function WinProbability({
   return (
     <section aria-labelledby="winprob-title" className="card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="winprob-title" className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73]">
+        <h2 id="winprob-title" className="card-title">
           Win probability
         </h2>
-        {view.kind === "model" && <p className="text-[11px] text-[#6e6e73]">Model of the match state only (score, balls, wickets)</p>}
+        {view.kind === "model" && <p className="text-xs text-muted">Model of the match state only (score, balls, wickets)</p>}
       </div>
 
       <div className="mt-3">
@@ -79,28 +79,28 @@ export default function WinProbability({
         {view.kind === "result" && (
           <p className="text-sm">
             <span className="text-lg font-semibold">{view.outcome.text}</span>
-            <span className="mt-1 block text-[#6e6e73]">
+            <span className="mt-1 block text-muted">
               {resultNote(view.outcome.kind, hiddenReason)}
             </span>
           </p>
         )}
-        {view.kind === "hidden" && <p className="text-sm text-[#6e6e73]">{view.reason}</p>}
+        {view.kind === "hidden" && <p className="text-sm text-muted">{view.reason}</p>}
       </div>
 
       {view.kind !== "hidden" && series.length > 0 && (
         <>
-          <p className="mt-4 text-[11px] text-[#6e6e73]">▲ {teams[0]} ahead · the axis is {teams[0]}&apos;s chance of winning</p>
-          <div className="h-56 sm:h-64" role="img" aria-label={`Win probability chart: ${teams[0]} ahead above the middle line, ${teams[1]} below. Use the table below for the values.`}>
+          <p className="mt-4 text-xs text-muted">▲ {teams[0]} ahead · the axis is {teams[0]}&apos;s chance of winning</p>
+          <div className="h-56 sm:h-64" role="img" aria-label={`Win probability chart: ${teams[0]} ahead above the middle line, ${teams[1]} below. The table below the chart has the values.`}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="rgba(0,0,0,0.06)" vertical={false} />
+              <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} accessibilityLayer={false}>
+                <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                 <XAxis
                   type="number"
                   dataKey="x"
                   domain={[0, 2 * maxOvers]}
                   ticks={ticks}
                   tickFormatter={(x: number) => String(x > maxOvers ? x - maxOvers : x)}
-                  tick={{ fontSize: 11, fill: "#6e6e73" }}
+                  tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
                   axisLine={false}
                   tickLine={false}
                 />
@@ -108,56 +108,59 @@ export default function WinProbability({
                   domain={[0, 1]}
                   ticks={[0, 0.25, 0.5, 0.75, 1]}
                   tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-                  tick={{ fontSize: 11, fill: "#6e6e73" }}
+                  tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
                   axisLine={false}
                   tickLine={false}
                   width={48}
                 />
-                <ReferenceLine y={0.5} stroke="rgba(0,0,0,0.25)" />
-                <ReferenceLine x={maxOvers} stroke="rgba(0,0,0,0.12)" label={{ value: "Innings 2", position: "insideTopLeft", fontSize: 11, fill: "#6e6e73" }} />
+                <ReferenceLine y={0.5} stroke="var(--chart-ref)" />
+                <ReferenceLine x={maxOvers} stroke="var(--chart-grid)" label={{ value: "Innings 2", position: "insideTopLeft", fontSize: 11, fill: "var(--chart-axis)" }} />
                 <Area dataKey="ahead1" baseValue={0.5} stroke="none" fill={TEAM_COLORS[0]} fillOpacity={0.12} isAnimationActive={false} activeDot={false} />
                 <Area dataKey="ahead2" baseValue={0.5} stroke="none" fill={TEAM_COLORS[1]} fillOpacity={0.12} isAnimationActive={false} activeDot={false} />
                 <Line
                   dataKey="p"
-                  stroke="#1d1d1f"
+                  stroke="var(--fg)"
                   strokeWidth={2}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                   dot={false}
-                  activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2, fill: "#1d1d1f" }}
+                  activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2, fill: "var(--fg)" }}
                   isAnimationActive={false}
                 />
-                <Tooltip content={<ChartTooltip teams={teams} />} cursor={{ stroke: "rgba(0,0,0,0.2)", strokeWidth: 1 }} isAnimationActive={false} />
+                <Tooltip content={<ChartTooltip teams={teams} />} cursor={{ stroke: "var(--chart-ref)", strokeWidth: 1 }} isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex justify-between text-[11px] text-[#6e6e73]">
+          <div className="flex justify-between text-xs text-muted">
             <span>▼ {teams[1]} ahead</span>
             <span>Overs</span>
           </div>
 
-          <details className="mt-3 text-sm">
-            <summary className="cursor-pointer text-[#0071e3]">Show as a table</summary>
-            <div className="mt-2 max-h-64 overflow-auto">
-              <table className="w-full text-left text-xs tabular-nums">
+          <details className="group mt-3 text-sm">
+            <summary className="inline-flex min-h-9 items-center font-medium text-accent">
+              <span className="group-open:hidden">View as table</span>
+              <span className="hidden group-open:inline">Hide table</span>
+            </summary>
+            <div className="table-scroll mt-2 max-h-64 overflow-y-auto rounded-control border border-line">
+              <table className="data-table text-xs">
                 <caption className="sr-only">Win probability at the end of each over</caption>
-                <thead className="text-[#6e6e73]">
+                <thead>
                   <tr>
-                    <th scope="col" className="py-1 pr-3 font-medium">Innings</th>
-                    <th scope="col" className="py-1 pr-3 font-medium">Over</th>
-                    <th scope="col" className="py-1 pr-3 font-medium">Score</th>
-                    <th scope="col" className="py-1 pr-3 font-medium">{teams[0]}</th>
-                    <th scope="col" className="py-1 font-medium">{teams[1]}</th>
+                    <th scope="col">Innings</th>
+                    <th scope="col">Over</th>
+                    <th scope="col">Score</th>
+                    <th scope="col" className="num">{teams[0]}</th>
+                    <th scope="col" className="num">{teams[1]}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tableRows.map((r) => (
-                    <tr key={r.seq} className="border-t border-black/5">
-                      <td className="py-1 pr-3">{r.innings}</td>
-                      <td className="py-1 pr-3">{r.label}</td>
-                      <td className="py-1 pr-3">{r.score}</td>
-                      <td className="py-1 pr-3">{pct(r.p)}</td>
-                      <td className="py-1">{pct(1 - r.p)}</td>
+                    <tr key={r.seq}>
+                      <td>{r.innings}</td>
+                      <td className="tabular-nums">{r.label}</td>
+                      <td className="tabular-nums">{r.score}</td>
+                      <td className="num">{pct(r.p)}</td>
+                      <td className="num">{pct(1 - r.p)}</td>
                     </tr>
                   ))}
                 </tbody>

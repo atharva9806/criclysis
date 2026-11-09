@@ -125,6 +125,39 @@ class OneGenderBuild(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class OnePersonUnderBothGenders(unittest.TestCase):
+    """The real build has four person ids filed as both female and male. The
+    build keeps one record (the side with more balls) and says why in the log."""
+
+    def test_the_warning_names_each_side_with_its_matches(self):
+        from tests.fixtures import relabel
+        women = WOMEN[:6]
+        woman = women[0][1]["info"]["players"][women[0][1]["innings"][0]["team"]][0]
+        pid = women[0][1]["info"]["registry"]["people"][woman]
+        men_id, men_raw = MEN[0]
+        man = men_raw["info"]["players"][men_raw["innings"][0]["team"]][0]
+        men = [(men_id, relabel(men_raw, players={man: (man, pid)}))] + MEN[1:6]
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            archive = tmp / "t20s_json.zip"
+            write_archive(archive, men + women)
+            with self.assertLogs("pipeline.build", level="WARNING") as logs:
+                build_dataset(tmp / "out", formats=("t20i",), genders=("male", "female"),
+                              archives={"t20i": archive}, sha="local")
+            players = {p["id"]: p for p in
+                       json.loads((tmp / "out" / "players.json").read_text())["players"]}
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        warning = next(line for line in logs.output if pid in line)
+        women_ids = [m for m, raw in women
+                     if pid in raw["info"]["registry"]["people"].values()]
+        self.assertIn(f"female as {woman} (", warning)
+        self.assertIn(f"male as {man} (", warning)
+        self.assertIn(f"1 match (t20i {men_id})", warning)
+        self.assertIn(f"t20i {', '.join(women_ids)})", warning)
+        self.assertIn(f"players.json keeps the {players[pid]['gender']} record", warning)
+
+
 class CohortUnitTests(unittest.TestCase):
     def test_a_cohort_only_holds_its_own_aggregator(self):
         from pipeline.aggregate import Aggregator

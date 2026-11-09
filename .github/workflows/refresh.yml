@@ -13,10 +13,10 @@ name: Daily data refresh
 # women's to data/out-female, to measure women's volume (§7 R4).
 #
 # Failures never touch the site: every step only runs if all earlier steps
-# passed, so a failed fetch, build or golden check means the import never
-# starts. Only a complete v2 build is imported: the import waits until build,
-# winprob and replays (all with --genders), fingerprint and the golden test
-# all exist. The importer commits in small transactions behind an advisory
+# passed, so a failed fetch, build, replay or golden check means the import
+# never starts. Only a complete v2 build is imported: the import waits until
+# build, winprob and replays (all with --genders), fingerprint and the golden
+# test all exist. The importer commits in small transactions behind an advisory
 # lock (§3.2, §3.3), so a failed import stops at a batch boundary and the site
 # keeps serving its current data.
 #
@@ -175,6 +175,15 @@ jobs:
         if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.replays == 'true'
         run: python -m pipeline replays --all --genders male female
 
+      # ARCHITECTURE §1.9: every replay against the rest of the build. Each
+      # innings' total, wickets, legal balls and penalty runs against
+      # matches.json; each bowler's balls, runs conceded, wickets and maidens
+      # against their player file; each team's top bowlers against the
+      # replays summed. Lists the first mismatches and fails before the import.
+      - name: Check the replays against the build
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.replays == 'true'
+        run: python -m pipeline verify-replays --data data/out
+
       - name: Summarise the build volume
         if: always() && steps.check.outputs.unchanged != 'true'
         run: python3 scripts/ci/volume_summary.py data/out=male data/out-female=female | tee -a "$GITHUB_STEP_SUMMARY"
@@ -186,6 +195,15 @@ jobs:
         env:
           WINPROB_FILE: ../data/out/winprob.json
         run: npm run test:golden
+
+      # The replay engine's scorecard for every replay against matches.json
+      # and the player files: the TypeScript half of the check above.
+      - name: Check the TypeScript replay engine against the build
+        if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.golden == 'true' && steps.plan.outputs.replays == 'true'
+        working-directory: web
+        env:
+          REPLAY_DATA_DIR: ../data/out
+        run: npm run test:replays
 
       # §3.1 step 7 (db:migrate already ran, near the top). The report is
       # uploaded below, and artifacts of a public repository are

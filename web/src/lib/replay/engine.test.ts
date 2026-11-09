@@ -7,15 +7,16 @@
  * verbatim). The TypeScript port evaluates the same numbers with the same
  * float64 operations, so the curve is held to 1e-9 (the contract asks 1e-6).
  *
- * When A1's fixtures/data-out exists, every replay there is also checked
- * against matches.json totals and A's 1384439.wincurve.json.
+ * When A1's fixtures/data-out exists, its 1384439 replay is also checked
+ * against A's 1384439.wincurve.json; replays.test.ts checks every replay in a
+ * build against the build's own records.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import type { ReplayContext, SplitRow, TraitRow } from "../contract/db";
-import type { Match, MatchesFile, Replay, WinModelJson, WinProbFile } from "../contract/pipeline";
+import { ballExtras, ballWickets, isBall, type Ball, type Replay, type WinModelJson, type WinProbFile } from "../contract/pipeline";
 import { WinModel } from "../winprob/model";
 import {
   ballLabel,
@@ -104,19 +105,6 @@ describe("innings totals equal the official scores", () => {
   }
 
   const A1 = path("../../../../fixtures/data-out/");
-  it.runIf(existsSync(`${A1}matches.json`))("every replay in fixtures/data-out matches matches.json", () => {
-    const matches = new Map((JSON.parse(readFileSync(`${A1}matches.json`, "utf8")) as MatchesFile).matches.map((m): [string, Match] => [m.id, m]));
-    const files = readdirSync(`${A1}replays`).filter((f) => f.endsWith(".json.gz"));
-    expect(files.length).toBeGreaterThan(0);
-    for (const f of files) {
-      const r = JSON.parse(gunzipSync(readFileSync(`${A1}replays/${f}`)).toString("utf8")) as Replay;
-      const m = matches.get(r.id);
-      expect(m, r.id).toBeDefined();
-      const got = inningsTotals(buildTimeline(r)).map((t) => [t.team, t.runs, t.wickets, t.legalBalls]);
-      expect(got, r.id).toEqual(m!.innings.map((i) => [i.team, i.runs, i.wickets, i.balls]));
-    }
-  });
-
   it.runIf(existsSync(`${A1}replays/1384439.wincurve.json`))("matches A's 1384439.wincurve.json to 1e-6", () => {
     const file = JSON.parse(readFileSync(`${A1}winprob.json`, "utf8")) as WinProbFile;
     const json = (file.formats["odi-m"] ?? file.formats.odi) as WinModelJson;
@@ -229,7 +217,7 @@ describe("match state", () => {
     expect(ballLabel([0, 0, 1, 2, 0, 0, null, null, null]).text).toBe("•");
     expect(ballLabel([0, 0, 1, 2, 4, 0, null, null, null])).toMatchObject({ text: "4", tone: "boundary" });
     expect(ballLabel([0, 0, 1, 2, 0, 1, "wides", null, null])).toMatchObject({ text: "1wd", tone: "extra" });
-    expect(ballLabel([0, 0, 1, 2, 4, 1, "noballs", null, null])).toMatchObject({ text: "5nb", description: "5 no-balls, 4 off the bat" });
+    expect(ballLabel([0, 0, 1, 2, 4, 1, "noballs", null, null])).toMatchObject({ text: "5nb", description: "1 no-ball, 4 off the bat" });
     expect(ballLabel([0, 0, 1, 2, 0, 0, null, "caught", 0])).toMatchObject({ text: "W", tone: "wicket" });
   });
 });
@@ -403,5 +391,120 @@ describe("player context", () => {
     const k = xi[0].players.find((p) => p.name === "V Kohli")!;
     expect([k.strength?.text, k.weakness?.text, k.inDataset]).toEqual(["Death: strike rate", "Left-arm pace", true]);
     expect(xi[0].players.find((p) => p.name === "RG Sharma")).toMatchObject({ strength: null, inDataset: false });
+  });
+});
+
+describe("balls with extras of two kinds, penalty runs and two wickets (§1.9)", () => {
+  // X bats: A (0) and B (1) open, C (2) and D (3) are next; Y's P (4) and Q (5) bowl.
+  // pipeline tests/test_replay.py replays the same balls through replay.py.
+  const balls: Ball[] = [
+    [0, 0, 4, 1, 1, 0, null, null, null],
+    [0, 1, 4, 0, 0, 5, "noballs", null, null, { noballs: 1, byes: 4 }],
+    [0, 1, 4, 0, 0, 2, "noballs", null, null, { noballs: 1, legbyes: 1 }],
+    [0, 1, 4, 0, 0, 5, "wides", null, null],
+    [0, 1, 4, 0, 0, 5, "penalty", null, null, { penalty: 5 }],
+    [0, 1, 4, 0, 2, 0, null, null, null],
+    // B caught, then C timed out (as in 1384429).
+    [0, 1, 4, 0, 0, 0, null, "caught", 1, null, [["timed out", 2]]],
+    [1, 3, 5, 0, 4, 0, null, null, null],
+    // D bowled, and A retires hurt on the same ball: one wicket.
+    [1, 3, 5, 0, 0, 0, null, "bowled", 3, null, [["retired hurt", 0]]],
+  ];
+  const who = ["A", "B", "C", "D", "P", "Q"];
+  const r: Replay = {
+    ...FINAL_2024,
+    id: "synthetic",
+    people: who.map((name, i) => ({ id: `0000000${i}`, name, team: i < 4 ? "X" : "Y" })),
+    teams: ["X", "Y"],
+    innings: [{ team: "X", target: null, targetOvers: null, penaltyRuns: { pre: 0, post: 0 }, balls }],
+  };
+  const tl = buildTimeline(r);
+  const [card] = scorecardAt(tl);
+  const named = (i: number | null) => (i == null ? null : who[i]);
+
+  it("decodes old and new balls alike", () => {
+    expect(balls.every(isBall)).toBe(true);
+    expect(ballExtras(balls[1])).toEqual({ wides: 0, noballs: 1, byes: 4, legbyes: 0, penalty: 0 });
+    expect(ballExtras(balls[3])).toEqual({ wides: 5, noballs: 0, byes: 0, legbyes: 0, penalty: 0 });
+    expect(ballWickets(balls[6])).toEqual([{ kind: "caught", playerOut: 1 }, { kind: "timed out", playerOut: 2 }]);
+    // An old nine-element ball: its one kind carries all of [5].
+    const old: Ball = [0, 0, 1, 2, 4, 1, "noballs", null, null];
+    expect([isBall(old), ballExtras(old).noballs, ballWickets(old)]).toEqual([true, 1, []]);
+    expect(ballWickets([0, 0, 1, 2, 0, 0, null, "lbw", 0])).toEqual([{ kind: "lbw", playerOut: 0 }]);
+    for (const bad of [[0, 0, 1, 2, 0, 0, null, null], [...old, null, [], 0], [0, 0, 1, 2, 0, 1, "extras", null, null], [...old, { noballs: "1" }], [...old, null, [["caught"]]]]) {
+      expect(isBall(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("counts every wicket but retirements, as replay_states does", () => {
+    expect(replayStates(r, 120).map((s) => [s.ballsLeft, s.wickets, s.runs])).toEqual([
+      [119, 0, 1], [119, 0, 6], [119, 0, 8], [119, 0, 13], [118, 0, 18], [117, 0, 20], [116, 2, 20], [115, 2, 24], [114, 3, 24],
+    ]);
+    expect(inningsTotals(tl)).toEqual([{ team: "X", runs: 24, wickets: 3, legalBalls: 6, overs: "1" }]);
+  });
+
+  it("lists a trailing innings with no deliveries once the match is over, as matches.json does", () => {
+    const forfeit: Replay = {
+      ...r,
+      innings: [...r.innings, { team: "Y", target: null, targetOvers: null, penaltyRuns: { pre: 0, post: 0 }, balls: [] }],
+    };
+    const ftl = buildTimeline(forfeit);
+    expect(inningsTotals(ftl).map((t) => [t.team, t.runs, t.wickets, t.legalBalls])).toEqual([["X", 24, 3, 6], ["Y", 0, 0, 0]]);
+    expect(scorecardAt(ftl).map((c) => c.total.runs)).toEqual([24, 0]);
+    // Mid-match it is not shown yet.
+    expect(inningsTotals(ftl, ftl.deliveries.length - 1).map((t) => t.team)).toEqual(["X"]);
+  });
+
+  it("splits the extras by kind on the scorecard", () => {
+    expect(card.extras).toEqual({ byes: 4, legbyes: 1, wides: 5, noballs: 2, penalty: 5, total: 17 });
+    expect(card.batting.reduce((s, b) => s + b.runs, 0) + card.extras.total).toBe(card.total.runs);
+  });
+
+  it("charges the bowler bat runs, wides and no-balls only", () => {
+    // P: 1 + nb 1 (4 byes are not his) + nb 1 (1 leg bye) + 5 wides + 0 (5 penalty) + 2.
+    expect(card.bowling.map((b) => [named(b.person), b.legalBalls, b.runs, b.wickets, b.wides, b.noballs])).toEqual([
+      ["P", 4, 10, 1, 1, 2],
+      ["Q", 2, 4, 1, 0, 0],
+    ]);
+  });
+
+  it("keeps both wickets in the fall of wickets, and the retirement out of it", () => {
+    expect(card.fallOfWickets.map((f) => [f.wicket, f.runs, named(f.person), f.label])).toEqual([
+      [1, 20, "B", "0.4"],
+      [2, 20, "C", "0.4"],
+      [3, 24, "D", "1.2"],
+    ]);
+    const how = Object.fromEntries(card.batting.map((b) => [named(b.person), b.dismissal?.label ?? null]));
+    expect(how).toEqual({ A: "retired hurt", B: "caught b P", C: "timed out", D: "b Q" });
+    expect(card.batting.find((b) => named(b.person) === "B")).toMatchObject({ runs: 2, balls: 5 });
+  });
+
+  it("ends the partnership on the ball, with a scoreless one for the batter timed out", () => {
+    expect(card.partnerships.map((p) => [p.wicket, p.batters.map(named), p.runs, p.balls, p.unbroken])).toEqual([
+      [1, ["A", "B"], 20, 4, false],
+      [2, ["A", "C"], 0, 0, false],
+      [3, ["A", "D"], 4, 2, false],
+    ]);
+  });
+
+  it("leaves nobody at the crease when both batters go on the last ball", () => {
+    expect(stateAt(tl, tl.deliveries.length)).toMatchObject({ wickets: 3, striker: null, nonStriker: null });
+    expect(stateAt(tl, 7)).toMatchObject({ wickets: 2, striker: 3, nonStriker: 0 });
+  });
+
+  it("spells out every kind in the ticker, and never shows a retirement as a wicket", () => {
+    const labels = balls.map((b) => {
+      const l = ballLabel(b);
+      return [l.text, l.tone, l.description];
+    });
+    expect(labels.slice(1, 5)).toEqual([
+      ["5nb", "extra", "1 no-ball, 4 byes"],
+      ["2nb", "extra", "1 no-ball, 1 leg bye"],
+      ["5wd", "extra", "5 wides"],
+      ["5p", "extra", "5 penalty runs"],
+    ]);
+    expect(labels[6]).toEqual(["W", "wicket", "caught and timed out"]);
+    expect(labels[8]).toEqual(["W", "wicket", "bowled and retired hurt"]);
+    expect(ballLabel([3, 0, 4, 1, 1, 0, null, "retired hurt", 0])).toEqual({ text: "1", tone: "run", description: "1 run, retired hurt" });
   });
 });

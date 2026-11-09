@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:golden": "vitest run src/lib/winprob/golden.test.ts",
+    "test:replays": "vitest run src/lib/replay/replays.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "import": "node scripts/import/index.mjs",

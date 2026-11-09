@@ -562,9 +562,29 @@ export type WinProbFile = {
 
 // ----------------------------------------------------------------- replays
 
-export type ExtraType = "wides" | "noballs" | "byes" | "legbyes" | "penalty" | null;
+/** Cricsheet's extras keys, in the order that picks a ball's `extraType`. */
+export const EXTRA_KINDS = ["wides", "noballs", "byes", "legbyes", "penalty"] as const;
+export type ExtraKind = (typeof EXTRA_KINDS)[number];
+export type ExtraType = ExtraKind | null;
+/** Ball [9]: the delivery's Cricsheet `extras` object, kinds in EXTRA_KINDS order. */
+export type ExtrasByKind = Partial<Record<ExtraKind, number>>;
+/** An item of ball [10]: a wicket after the first one on the delivery. */
+export type MoreWicket = [kind: string, playerOut: number | null];
 
-/** [over, batter, bowler, nonStriker, runsBat, extras, extraType, wicketKind, playerOut] */
+/**
+ * [over, batter, bowler, nonStriker, runsBat, extras, extraType, wicketKind, playerOut,
+ *  extrasByKind?, moreWickets?] (docs/ARCHITECTURE.md §1.9).
+ *
+ * The first nine have always meant the same: `extras` is every extra run on
+ * the ball, `extraType` the first kind present (a wide or no-ball always wins,
+ * so it decides legality), and the wicket is the first one. The last two are
+ * written only when needed, so most balls are nine long and old replays load
+ * unchanged:
+ * - [9] the extras by kind when there are two kinds, any penalty, or a value
+ *   other than `extras`, e.g. `{ noballs: 1, byes: 4 }`; null if only [10] is needed;
+ * - [10] every wicket after the first, e.g. `[["timed out", 9]]`.
+ * Read them with ballExtras and ballWickets rather than by position.
+ */
 export type Ball = [
   over: number,
   batter: number,
@@ -575,7 +595,56 @@ export type Ball = [
   extraType: ExtraType,
   wicketKind: string | null,
   playerOut: number | null,
+  extrasByKind?: ExtrasByKind | null,
+  moreWickets?: MoreWicket[],
 ];
+
+/** Runs of each extra kind on one ball. */
+export type BallExtras = Record<ExtraKind, number>;
+export type BallWicket = { kind: string; playerOut: number | null };
+
+/** Extras by kind for any ball: a nine-element ball has one kind carrying all of [5]. */
+export function ballExtras(b: Ball): BallExtras {
+  const out: BallExtras = { wides: 0, noballs: 0, byes: 0, legbyes: 0, penalty: 0 };
+  const byKind = b[9];
+  if (byKind != null) {
+    for (const k of EXTRA_KINDS) out[k] += byKind[k] ?? 0;
+  } else if (b[6]) {
+    out[b[6]] += b[5];
+  }
+  return out;
+}
+
+/** Every wicket on a ball, in Cricsheet's order (retirements included). */
+export function ballWickets(b: Ball): BallWicket[] {
+  const out: BallWicket[] = b[7] ? [{ kind: b[7], playerOut: b[8] }] : [];
+  for (const [kind, playerOut] of b[10] ?? []) out.push({ kind, playerOut });
+  return out;
+}
+
+const isInt = (x: unknown): x is number => Number.isInteger(x);
+const isIndex = (x: unknown) => x === null || isInt(x);
+
+/** Whether a value is a well-formed Ball, nine to eleven elements long. */
+export function isBall(x: unknown): x is Ball {
+  if (!Array.isArray(x) || x.length < 9 || x.length > 11) return false;
+  if (![0, 1, 2, 3, 4, 5].every((i) => isInt(x[i]))) return false;
+  if (x[6] !== null && !(EXTRA_KINDS as readonly unknown[]).includes(x[6])) return false;
+  if (x[7] !== null && typeof x[7] !== "string") return false;
+  if (!isIndex(x[8])) return false;
+  const byKind: unknown = x[9];
+  if (byKind != null) {
+    if (typeof byKind !== "object" || Array.isArray(byKind)) return false;
+    for (const [k, v] of Object.entries(byKind)) {
+      if (!(EXTRA_KINDS as readonly string[]).includes(k) || !isInt(v)) return false;
+    }
+  }
+  if (x.length === 11) {
+    const more: unknown = x[10];
+    if (!Array.isArray(more) || !more.every((w) => Array.isArray(w) && w.length === 2 && typeof w[0] === "string" && isIndex(w[1]))) return false;
+  }
+  return true;
+}
 
 export type Replay = {
   schemaVersion?: 2;

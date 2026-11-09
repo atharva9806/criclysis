@@ -289,6 +289,36 @@ class BallEncodingTests(unittest.TestCase):
             self.assertNotEqual(check(BALL, ball, "ball"), [], why)
 
 
+class SameBallsAsTheEngineTests(unittest.TestCase):
+    """The balls web/src/lib/replay/engine.test.ts replays, with the same
+    expected numbers, so Python and TypeScript count them identically."""
+
+    BALLS = [
+        [0, 0, 4, 1, 1, 0, None, None, None],
+        [0, 1, 4, 0, 0, 5, "noballs", None, None, {"noballs": 1, "byes": 4}],
+        [0, 1, 4, 0, 0, 2, "noballs", None, None, {"noballs": 1, "legbyes": 1}],
+        [0, 1, 4, 0, 0, 5, "wides", None, None],
+        [0, 1, 4, 0, 0, 5, "penalty", None, None, {"penalty": 5}],
+        [0, 1, 4, 0, 2, 0, None, None, None],
+        [0, 1, 4, 0, 0, 0, None, "caught", 1, None, [["timed out", 2]]],
+        [1, 3, 5, 0, 4, 0, None, None, None],
+        [1, 3, 5, 0, 0, 0, None, "bowled", 3, None, [["retired hurt", 0]]],
+    ]
+
+    def test_states_and_bowling_figures(self):
+        for i, ball in enumerate(self.BALLS):
+            self.assertEqual(check(BALL, ball, f"ball {i}"), [])
+        replay = {"teams": ["X", "Y"], "innings": [
+            {"team": "X", "target": None, "penaltyRuns": {"pre": 0, "post": 0},
+             "balls": self.BALLS}]}
+        self.assertEqual([s[1:4] for s in replay_states(replay, 120)], [
+            (119, 0, 1), (119, 0, 6), (119, 0, 8), (119, 0, 13), (118, 0, 18), (117, 0, 20),
+            (116, 2, 20), (115, 2, 24), (114, 3, 24)])
+        self.assertEqual(replay_totals(replay), [(24, 3, 6)])
+        self.assertEqual([(b, f) for _n, _t, b, f in bowling_figures(replay)],
+                         [(4, [4, 10, 1, 0]), (5, [2, 4, 1, 0])])
+
+
 def with_tricky_deliveries(matches: list[tuple[str, dict]]) -> list[tuple[str, dict]]:
     """Simulated matches with the deliveries the nine-element ball got wrong:
     extras of two kinds, penalty runs and two wickets on one ball."""

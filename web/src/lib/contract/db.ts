@@ -14,6 +14,7 @@ import type {
   MatchInnings,
   MatchResult,
   PersonId,
+  PlayerPhoto,
   Record5,
   TeamFormat,
   TeamFormatDetail,
@@ -158,6 +159,7 @@ export type PlayerListRow = {
   teams: string[];
   role: string | null;
   lastPlayed: string | null;
+  photo: PlayerPhoto | null;
   formatKeys: FormatKey[];
   /** null when any summed format lacks the XI count (v1 data). */
   matches: number | null;
@@ -200,6 +202,7 @@ export type PlayerHeader = {
   debut: string | null;
   lastPlayed: string | null;
   sampleBalls: number;
+  photo: PlayerPhoto | null;
 };
 
 /** career_stats for one formatKey; rates come from the pipeline's overall split. */

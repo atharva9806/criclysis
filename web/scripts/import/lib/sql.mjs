@@ -6,7 +6,8 @@ export const TABLES = {
   players: {
     cols: [
       "source_id", "slug", "name", "full_name", "gender", "country", "teams", "team_ids", "role", "batting_hand",
-      "bowling_type", "cricinfo_id", "born", "debut", "last_played", "sample_balls", "content_hash",
+      "bowling_type", "cricinfo_id", "born", "debut", "last_played", "sample_balls", "photo_thumb_url",
+      "photo_page_url", "photo_author", "photo_license", "photo_license_url", "content_hash",
     ],
     json: [],
     key: ["source_id"],

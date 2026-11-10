@@ -28,7 +28,7 @@ export function initials(name: string): string {
  * initials avatar when there is none. A plain <img> (not next/image) so the
  * thumbnail comes straight from upload.wikimedia.org without using Vercel's
  * image optimisation. The credit is always visible: the licences (CC BY and
- * CC BY-SA) require it.
+ * CC BY-SA, GODL-India) require it.
  */
 export function PlayerPhoto({
   photo,

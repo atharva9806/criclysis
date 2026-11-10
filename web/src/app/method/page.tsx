@@ -219,7 +219,7 @@ export default async function MethodPage() {
             <a href="https://www.wikidata.org" className="link">
               Wikidata
             </a>{" "}
-            links that id to the player&apos;s image. Only images released under CC0, into the public domain, or under CC BY or CC BY-SA are used, and each
+            links that id to the player&apos;s image. Only images released under CC0, into the public domain, or under CC BY, CC BY-SA or the Government Open Data Licence – India are used, and each
             is shown with its author and licence, linked to the file&apos;s page on Commons. An id that leads to more than one Wikidata entry gets no photo
             rather than a guessed one, and a player without a usable image is shown with their initials.
           </p>

@@ -165,7 +165,11 @@ jobs:
       - name: Choose the photo cache key
         id: photo-week
         if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'genders'
-        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+        # The cache format's version (pipeline/photos.py CACHE_VERSION) is part
+        # of the key, so a format change starts a fresh cache at once.
+        run: |
+          echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+          echo "version=$(python -c 'from pipeline.photos import CACHE_VERSION; print(CACHE_VERSION)')" >> "$GITHUB_OUTPUT"
 
       - name: Restore the player-photo cache
         id: photo-cache
@@ -174,8 +178,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/photos
-          key: player-photos-${{ steps.photo-week.outputs.week }}
-          restore-keys: player-photos-
+          key: player-photos-v${{ steps.photo-week.outputs.version }}-${{ steps.photo-week.outputs.week }}
+          restore-keys: player-photos-v${{ steps.photo-week.outputs.version }}-
 
       # §3.1 step 5. The `photos:` lines (counts, licences, and any Wikidata or
       # Commons failure) go to the run summary, failures also as warnings.
@@ -197,7 +201,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: .cache/photos
-          key: player-photos-${{ steps.photo-week.outputs.week }}
+          key: player-photos-v${{ steps.photo-week.outputs.version }}-${{ steps.photo-week.outputs.week }}
 
       - name: Build men's data (current pipeline)
         if: steps.check.outputs.unchanged != 'true' && steps.plan.outputs.build_mode == 'legacy'

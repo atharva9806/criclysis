@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+import unicodedata
 import unittest
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -32,7 +33,9 @@ def sparql(claims: list[tuple[str, str, str | None]], formatter: str = FORMATTER
         row = {"item": {"type": "uri", "value": f"http://www.wikidata.org/entity/{qid}"},
                "id": {"type": "literal", "value": cid}}
         if image:
-            row["image"] = {"type": "uri", "value": FILE_PATH + urllib.parse.quote(image)}
+            # A full Special:FilePath URL is passed through as the P18 value.
+            value = image if image.startswith("http") else FILE_PATH + urllib.parse.quote(image)
+            row["image"] = {"type": "uri", "value": value}
         rows.append(row)
     return json.dumps({"head": {"vars": ["item", "id", "image", "formatter"]},
                        "results": {"bindings": rows}})
@@ -52,13 +55,30 @@ def page(name: str, licence: str, artist: str = "Jane Doe",
         "extmetadata": meta}]}
 
 
-class FakeWikimedia:
-    """Answers net.get for the two APIs; records every call."""
+def mediawiki_title(title: str) -> str:
+    """How Commons normalises a requested title (written independently of photos.py)."""
+    ns, _, name = title.partition(":")
+    name = unicodedata.normalize("NFC", " ".join(name.replace("_", " ").split()))
+    return f"{ns.capitalize()}:{name[:1].upper()}{name[1:]}"
 
-    def __init__(self, claims, pages, *, wikidata_down=False, commons_down=False):
+
+class FakeWikimedia:
+    """Answers net.get for the two APIs like the real ones; records every call.
+
+    Commons normalises the titles it is asked for and reports it in
+    ``normalized``, follows ``redirects`` (old name -> new name) and, like
+    the real API, gives ``thumburl`` to at most ``thumb_limit`` files per
+    request and leaves it out for the rest. ``pages`` is keyed by the
+    canonical file name.
+    """
+
+    def __init__(self, claims, pages, *, wikidata_down=False, commons_down=False,
+                 redirects=None, thumb_limit=None):
         self.claims, self.pages = claims, pages
         self.wikidata_down, self.commons_down = wikidata_down, commons_down
+        self.redirects, self.thumb_limit = redirects or {}, thumb_limit
         self.calls: list[str] = []
+        self.titles: list[str] = []
 
     def __call__(self, url, **kwargs):
         self.calls.append(url)
@@ -76,9 +96,30 @@ class FakeWikimedia:
             assert params["maxlag"] == ["5"] and params["iiurlwidth"] == ["480"], params
             titles = params["titles"][0].split("|")
             assert len(titles) <= photos.COMMONS_BATCH
-            pages = [self.pages.get(t[len("File:"):], {"ns": 6, "title": t, "missing": True})
-                     for t in titles]
-            return json.dumps({"batchcomplete": True, "query": {"pages": pages}})
+            self.titles += titles
+            query: dict = {"normalized": [], "redirects": [], "pages": []}
+            scaled = 0
+            for asked in titles:
+                title = mediawiki_title(asked)
+                if title != asked:
+                    query["normalized"].append({"fromencoded": False, "from": asked, "to": title})
+                if title[5:] in self.redirects:
+                    target = "File:" + self.redirects[title[5:]]
+                    query["redirects"].append({"from": title, "to": target})
+                    title = target
+                found = self.pages.get(title[5:])
+                if found is None:
+                    query["pages"].append({"ns": 6, "title": title, "missing": True, "known": False})
+                    continue
+                found = json.loads(json.dumps(found))
+                if self.thumb_limit is not None:
+                    if scaled >= self.thumb_limit:
+                        for key in ("thumburl", "thumbwidth", "thumbheight"):
+                            found["imageinfo"][0].pop(key, None)
+                    scaled += 1
+                query["pages"].append(found)
+            return json.dumps({"batchcomplete": True,
+                               "query": {k: v for k, v in query.items() if v or k == "pages"}})
         raise AssertionError(f"unexpected URL {url}")
 
     def count(self, api: str) -> int:
@@ -149,13 +190,13 @@ class JoinTests(PhotoTestCase):
         })
 
     def test_several_images_on_one_item_pick_the_first_by_name(self):
-        claims = photos.parse_claims(json.loads(sparql([("Q1", "1", "b.jpg"), ("Q1", "1", "a.jpg"),
+        claims = photos.parse_claims(json.loads(sparql([("Q1", "1", "B.jpg"), ("Q1", "1", "A.jpg"),
                                                         ("Q2", "2", None)])))
-        self.assertEqual(claims, {"1": {"Q1": "a.jpg"}, "2": {"Q2": None}})
+        self.assertEqual(claims, {"1": {"Q1": "A.jpg"}, "2": {"Q2": None}})
 
     def test_a_property_that_is_not_espncricinfo_is_refused(self):
-        fake = FakeWikimedia(sparql([("Q1", "1", "a.jpg")], formatter="https://example.org/$1"),
-                             {"a.jpg": page("a.jpg", "CC0")})
+        fake = FakeWikimedia(sparql([("Q1", "1", "A.jpg")], formatter="https://example.org/$1"),
+                             {"A.jpg": page("A.jpg", "CC0")})
         with mock.patch.object(net, "get", fake), self.assertLogs("pipeline.photos", "WARNING") as logs:
             got, _ = photos.resolve_photos({"aaaa0001"}, {"1": "aaaa0001"}, cache_file=self.cache,
                                            now=NOW)
@@ -178,20 +219,103 @@ class JoinTests(PhotoTestCase):
         self.assertEqual((got, fake.calls), ({}, []))
 
 
+class TitleTests(PhotoTestCase):
+    """P18 values as SPARQL returns them, down to the Commons answer (run 42691529987)."""
+
+    # (P18 value from SPARQL, canonical file name)
+    P18 = [
+        (FILE_PATH + "Virat%20Kohli%20in%20PMO%20New%20Delhi.jpg", "Virat Kohli in PMO New Delhi.jpg"),
+        (FILE_PATH + "Kagiso_Rabada_%282%29.jpg", "Kagiso Rabada (2).jpg"),
+        (FILE_PATH + "Mitchell Starc_2015.jpg", "Mitchell Starc 2015.jpg"),
+        (FILE_PATH + "Jos%C3%A9_Garc%C3%ADa_%28cricketer%29.jpg", "José García (cricketer).jpg"),
+        (FILE_PATH + "Mitchell%20Sta%CC%81rc%20bowling.jpg", "Mitchell Stárc bowling.jpg"),  # decomposed accent
+        (FILE_PATH + "Kevin%20O%27Brien%202011.jpg", "Kevin O'Brien 2011.jpg"),
+        (FILE_PATH + "Niall_O'Brien.JPG", "Niall O'Brien.JPG"),
+        (FILE_PATH + "shai%20hope%202019.jpg", "Shai hope 2019.jpg"),
+        (FILE_PATH + "%E0%A6%AE%E0%A7%81%E0%A6%B6%E0%A6%AB%E0%A6%BF%E0%A6%95%E0%A7%81%E0%A6%B0.jpg",
+         "মুশফিকুর.jpg"),
+        (FILE_PATH + "Babar__Azam%20%20at%20Lord%27s.jpg", "Babar Azam at Lord's.jpg"),
+        (FILE_PATH + "Old%20Rashid%20Khan%20photo.jpg", "Old Rashid Khan photo.jpg"),  # redirected
+    ]
+
+    def test_p18_values_become_canonical_file_names(self):
+        for value, name in self.P18:
+            self.assertEqual(photos.file_name(value), name, value)
+            self.assertEqual(f"File:{name}", mediawiki_title(f"File:{name}"), name)
+
+    def test_realistic_titles_get_their_photos(self):
+        names = [name for _value, name in self.P18]
+        canonical = {n: n for n in names}
+        canonical["Old Rashid Khan photo.jpg"] = "Rashid Khan 2019.jpg"
+        fake = FakeWikimedia(
+            [(f"Q{i}", str(i), value) for i, (value, _name) in enumerate(self.P18)],
+            {target: page(target, "CC BY-SA 4.0") for target in canonical.values()},
+            redirects={"Old Rashid Khan photo.jpg": "Rashid Khan 2019.jpg"})
+        register = {str(i): f"aaaa{i:04d}" for i in range(len(self.P18))}
+        got, stats = self.resolve(fake, set(register.values()), register)
+        self.assertEqual((stats["accepted"], stats["rejected"], stats["unavailable"]), (len(names), 0, 0))
+        self.assertEqual(sorted(fake.titles), sorted(f"File:{n}" for n in names))
+        self.assertTrue(got["aaaa0010"]["pageUrl"].endswith("File:Rashid_Khan_2019.jpg"))
+
+    def test_files_answered_without_a_thumbnail_are_asked_for_again(self):
+        # The run's symptom: Commons scaled about 10 of each 50 files, and the
+        # rest came back with licence and author but no thumburl.
+        names = [f"Player {i:03d}.jpg" for i in range(100)]
+        fake = FakeWikimedia([(f"Q{i}", str(i), n) for i, n in enumerate(names)],
+                             {n: page(n, "CC BY-SA 3.0") for n in names}, thumb_limit=10)
+        register = {str(i): f"{i:08x}" for i in range(100)}
+        got, stats = self.resolve(fake, set(register.values()), register)
+        self.assertEqual((stats["accepted"], stats["rejected"]), (100, 0))
+        self.assertNotIn("no thumbnail", self.logs)
+        # 2 batches of 50, each asked 5 times (50, 40, 30, 20, 10 files).
+        self.assertEqual(stats["commonsCalls"], 10)
+        self.assertEqual(fake.count(photos.COMMONS_API), 10)
+
+    def test_a_file_that_never_gets_a_thumbnail_is_named_in_the_log(self):
+        names = [f"P{i}.jpg" for i in range(5)]
+        fake = FakeWikimedia([(f"Q{i}", str(i), n) for i, n in enumerate(names)],
+                             {n: page(n, "CC0") for n in names}, thumb_limit=0)
+        register = {str(i): f"aaaa000{i}" for i in range(5)}
+        got, stats = self.resolve(fake, set(register.values()), register)
+        self.assertEqual((got, stats["rejected"]), ({}, 5))
+        self.assertEqual(fake.count(photos.COMMONS_API), 1)  # no progress, so no second round
+        self.assertIn("5 rejected (no thumbnail from Commons 5 [File:P0.jpg; File:P1.jpg; File:P2.jpg])",
+                      self.logs)
+        # Asked for again on the next run, although the cache is fresh.
+        again = FakeWikimedia([(f"Q{i}", str(i), n) for i, n in enumerate(names)],
+                              {n: page(n, "CC0") for n in names})
+        got, _ = self.resolve(again, set(register.values()), register, now=NOW + timedelta(days=1))
+        self.assertEqual((len(got), again.count(photos.WIKIDATA_SPARQL), again.count(photos.COMMONS_API)),
+                         (5, 0, 1))
+
+    def test_missing_and_invalid_files_are_their_own_reasons(self):
+        payload = {"query": {"pages": [
+            {"ns": 6, "title": "File:Gone.jpg", "missing": True},
+            {"title": "File:Bad<name>.jpg", "invalidreason": "contains illegal characters", "invalid": True},
+            page("Fine.jpg", "CC0")]}}
+        infos = photos.parse_imageinfo(payload)
+        self.assertEqual(photos.to_photo(infos["Gone.jpg"]), (None, photos.MISSING))
+        self.assertEqual(photos.to_photo(infos["Bad<name>.jpg"]), (None, photos.INVALID))
+        self.assertIsNotNone(photos.to_photo(infos["Fine.jpg"])[0])
+        info = dict(infos["Fine.jpg"], thumbUrl="")
+        self.assertEqual(photos.to_photo(info), (None, photos.NO_THUMB))
+        self.assertEqual(photos.to_photo(dict(info, license="")), (None, photos.NO_LICENCE))
+
+
 class LicenceTests(PhotoTestCase):
-    def test_only_cc0_public_domain_cc_by_and_cc_by_sa(self):
+    def test_only_cc0_public_domain_cc_by_cc_by_sa_and_godl_india(self):
         for name in ("CC0", "CC0 1.0", "Public domain", "PD", "PD-US", "CC BY 2.0", "CC BY 4.0",
                      "CC BY-SA 4.0", "CC-BY-SA-3.0", "CC BY-SA 3.0 de", "CC BY-SA 2.5 in",
-                     "CC BY-SA 3.0 IGO", "cc by"):
+                     "CC BY-SA 3.0 IGO", "cc by", "GODL-India", "GODL"):
             self.assertTrue(photos.licence_accepted(name), name)
-        for name in ("", "GFDL", "CC BY-NC 2.0", "CC BY-NC-SA 2.0", "CC BY-ND 4.0", "CC BY-NC",
-                     "FAL", "Attribution", "Copyrighted free use", "OGL v3", "GODL-India",
+        for name in ("", "GFDL", "GFDL 1.2", "CC BY-NC 2.0", "CC BY-NC-SA 2.0", "CC BY-ND 4.0",
+                     "CC BY-NC", "FAL", "Attribution", "Copyrighted free use", "OGL v3",
                      "All rights reserved", "pdf"):
             self.assertFalse(photos.licence_accepted(name), name)
 
     def test_rejected_files_are_dropped_and_counted_by_licence(self):
-        files = {"a.jpg": "CC BY-SA 4.0", "b.jpg": "GFDL", "c.jpg": "CC BY-NC 2.0",
-                 "d.jpg": "Public domain", "e.jpg": "GFDL"}
+        files = {"A.jpg": "CC BY-SA 4.0", "B.jpg": "GFDL", "C.jpg": "CC BY-NC 2.0",
+                 "D.jpg": "Public domain", "E.jpg": "GFDL"}
         fake = FakeWikimedia([(f"Q{i}", str(i), n) for i, n in enumerate(sorted(files))],
                              {n: page(n, lic, licence_url="" if lic == "Public domain" else
                                       "https://creativecommons.org/licenses/by-sa/4.0")
@@ -203,11 +327,24 @@ class LicenceTests(PhotoTestCase):
         self.assertEqual((stats["accepted"], stats["rejected"]), (2, 3))
         self.assertIn("3 rejected (GFDL 2, CC BY-NC 2.0 1)", self.logs)
 
+    def test_godl_india_is_accepted_with_its_licence_url(self):
+        fake = FakeWikimedia([("Q1", "1", "Virat Kohli PMO.jpg"), ("Q2", "2", "Rohit Sharma PIB.jpg")],
+                             {"Virat Kohli PMO.jpg": page("Virat Kohli PMO.jpg", "GODL-India", artist="Prime Minister's Office",
+                                                          licence_url="https://data.gov.in/sites/default/files/Gazette_Notification_OGDL.pdf"),
+                              "Rohit Sharma PIB.jpg": page("Rohit Sharma PIB.jpg", "GODL-India", licence_url="")})
+        got, _ = self.resolve(fake, {"aaaa0001", "aaaa0002"}, {"1": "aaaa0001", "2": "aaaa0002"})
+        self.assertEqual(got["aaaa0001"]["license"], "GODL-India")
+        self.assertEqual(got["aaaa0001"]["author"], "Prime Minister's Office")
+        self.assertEqual(got["aaaa0001"]["licenseUrl"],
+                         "https://data.gov.in/sites/default/files/Gazette_Notification_OGDL.pdf")
+        self.assertEqual(got["aaaa0002"]["licenseUrl"], photos.GODL_URL)
+        self.assertEqual(check(PHOTO, got["aaaa0002"], "photo"), [])
+
     def test_missing_files_are_rejected(self):
         fake = FakeWikimedia([("Q1", "1", "Gone.jpg")], {})
         got, stats = self.resolve(fake, {"aaaa0001"}, {"1": "aaaa0001"})
         self.assertEqual((got, stats["rejected"]), ({}, 1))
-        self.assertIn("file missing on Commons 1", self.logs)
+        self.assertIn("1 rejected (file missing on Commons 1 [File:Gone.jpg])", self.logs)
 
 
 class CreditTests(unittest.TestCase):
@@ -220,7 +357,7 @@ class CreditTests(unittest.TestCase):
         self.assertEqual(photos.plain_text("<style>.x{}</style>Ann &amp; Bob"), "Ann & Bob")
 
     def test_missing_author_falls_back(self):
-        info = photos.parse_imageinfo({"query": {"pages": [page("x.jpg", "CC0", artist="")]}})["x.jpg"]
+        info = photos.parse_imageinfo({"query": {"pages": [page("X.jpg", "CC0", artist="")]}})["X.jpg"]
         photo, why = photos.to_photo(info)
         self.assertIsNone(why)
         self.assertEqual(photo["author"], "Unknown author")
@@ -235,8 +372,8 @@ class CreditTests(unittest.TestCase):
 
 
 class CacheAndOutageTests(PhotoTestCase):
-    CLAIMS = [("Q1", "1", "a.jpg")]
-    PAGES = {"a.jpg": page("a.jpg", "CC BY-SA 4.0")}
+    CLAIMS = [("Q1", "1", "A.jpg")]
+    PAGES = {"A.jpg": page("A.jpg", "CC BY-SA 4.0")}
 
     def test_a_fresh_cache_makes_no_requests(self):
         first, _ = self.resolve(FakeWikimedia(self.CLAIMS, self.PAGES), {"aaaa0001"}, {"1": "aaaa0001"})
@@ -247,7 +384,7 @@ class CacheAndOutageTests(PhotoTestCase):
 
     def test_a_stale_cache_is_refreshed(self):
         self.resolve(FakeWikimedia(self.CLAIMS, self.PAGES), {"aaaa0001"}, {"1": "aaaa0001"})
-        fake = FakeWikimedia(self.CLAIMS, {"a.jpg": page("a.jpg", "CC BY-SA 4.0", artist="New name")})
+        fake = FakeWikimedia(self.CLAIMS, {"A.jpg": page("A.jpg", "CC BY-SA 4.0", artist="New name")})
         got, _ = self.resolve(fake, {"aaaa0001"}, {"1": "aaaa0001"}, now=NOW + timedelta(days=7))
         self.assertEqual((fake.count(photos.WIKIDATA_SPARQL), fake.count(photos.COMMONS_API)), (1, 1))
         self.assertEqual(got["aaaa0001"]["author"], "New name")

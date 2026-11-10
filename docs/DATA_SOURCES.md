@@ -12,7 +12,7 @@ In short:
 | Cricsheet people register (`register/people.csv`) | A link from ESPNcricinfo player ids to Cricsheet person ids, used to attach bowling styles and photos | CC BY 4.0 |
 | `data/player_styles.csv` | Bowling style, batting hand, role and country | Not open data; see section 2 |
 | `data/styles.csv` | 72 hand-curated corrections | Part of this repository |
-| [Wikidata](https://www.wikidata.org) and [Wikimedia Commons](https://commons.wikimedia.org) | Player photos, each with its author and licence; never a number | Per image: CC0, public domain, CC BY or CC BY-SA; see section 3 |
+| [Wikidata](https://www.wikidata.org) and [Wikimedia Commons](https://commons.wikimedia.org) | Player photos, each with its author and licence; never a number | Per image: CC0, public domain, CC BY, CC BY-SA or GODL-India; see section 3 |
 
 Nothing else is used. There is no live-score API, no scraping and no paid
 feed. The pipeline uses the network in two places: `python -m pipeline fetch`,
@@ -163,9 +163,16 @@ id only:
    author (`Artist`, as plain text) and licence (`LicenseShortName`,
    `LicenseUrl`).
 
-- **Licences.** Only CC0, public domain, CC BY and CC BY-SA (any version) are
-  kept. Everything else (GFDL, NonCommercial, NoDerivatives, others) is
-  dropped and counted in the build log.
+- **Licences.** Only CC0, public domain, CC BY and CC BY-SA (any version) and
+  the Government Open Data Licence – India (GODL-India, reuse with
+  attribution; many Indian government photos) are kept. Everything else
+  (GFDL, NonCommercial, NoDerivatives, others) is dropped and counted in the
+  build log.
+- **Titles.** P18 values are percent-decoded and normalised as MediaWiki
+  does (underscores to spaces, NFC, first letter upper case); Commons' own
+  `normalized` and `redirects` (renamed files) map its answers back.
+  Commons gives a thumbnail URL for only some of the files in each request,
+  so files answered without one are asked for again.
 - **Credit.** Every photo is shown with "Photo: author, licence", linked to
   the file's Commons page and the licence. The Method page explains the
   source. Nothing comes from Cricbuzz, ESPNcricinfo or photo agencies.

@@ -129,7 +129,7 @@ type PlayerFile = {
 };
 
 // Optional enrichment from Wikimedia Commons (pipeline/photos.py), only with `build --photos`.
-// Absent when the player has no usable image. Licence is CC0, public domain, CC BY or CC BY-SA.
+// Absent when the player has no usable image. Licence is CC0, public domain, CC BY, CC BY-SA or GODL-India.
 type PlayerPhoto = {
   thumbUrl: string;          // 480px-wide thumbnail, https://upload.wikimedia.org/...
   pageUrl: string;           // the file's page, https://commons.wikimedia.org/wiki/File:...
@@ -529,8 +529,8 @@ The step numbers below are the ones the comments in `refresh.yml` cite. Steps 4 
 3. `python -m pipeline fingerprint --out data/out/fingerprint.json`.
 4. `npm run check-fingerprint -- ../data/out/fingerprint.json` compares against the latest complete `dataset_meta.source_fingerprint` and prints `changed` or `unchanged`. If unchanged, steps 5 to 8 are skipped and the run ends successfully with an "Unchanged, skipped" notice. The check is skipped (so everything is rebuilt) when `force=true`, when `import=false`, or when `DATABASE_URL` is missing.
 5. Build, then check the replays in Python:
-   - `python -m pipeline build --genders male female --photos`. `--photos` adds player photos (§1.4, `DATA_SOURCES.md` §3) with one Wikidata query and about one Commons call per 50 photos. The answers are cached in `.cache/photos/photos.json` for six days; `actions/cache` keeps that directory under the key `player-photos-<ISO week>` (restore-keys `player-photos-`), restored before the build and saved after it, both allowed to fail. The first run of a week starts from the newest earlier cache, refreshes it and saves it; later runs that week reuse it and make no requests. An outage means cached photos or none, never a failed build. The build log has two summary lines, copied to the run summary, and any Wikidata or Commons failure also becomes a warning:
-     - `photos: N players with a cricinfo id, M matched on Wikidata, I with an image, K accepted (licences: CC BY-SA 4.0 n, …), J rejected (GFDL n, …)[, U without Commons metadata]`
+   - `python -m pipeline build --genders male female --photos`. `--photos` adds player photos (§1.4, `DATA_SOURCES.md` §3) with one Wikidata query and about one Commons call per 50 photos. The answers are cached in `.cache/photos/photos.json` for six days; `actions/cache` keeps that directory under the key `player-photos-v<cache version>-<ISO week>` (restore-keys `player-photos-v<cache version>-`), restored before the build and saved after it, both allowed to fail. The first run of a week starts from the newest earlier cache, refreshes it and saves it; later runs that week reuse it and make no requests. An outage means cached photos or none, never a failed build. The build log has two summary lines, copied to the run summary, and any Wikidata or Commons failure also becomes a warning:
+     - `photos: N players with a cricinfo id, M matched on Wikidata, I with an image, K accepted (licences: CC BY-SA 4.0 n, …), J rejected (GFDL n, file missing on Commons n [File:…; up to 3 examples], …)[, U without Commons metadata]`. Reasons other than a licence (file missing, invalid title, no thumbnail, no licence given) name up to 3 example files. Commons calls count every request, including the repeats for files answered without a thumbnail.
      - `photos: wikidata <queried, n ESPNcricinfo ids | cached from <date> | unavailable (…)>; commons C calls (F failed), X files fetched, Y from the cache[ (Z older than 6 days)][; skipped: …]`
    - `python -m pipeline winprob --genders male female`
    - `python -m pipeline replays --all --genders male female`

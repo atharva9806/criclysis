@@ -245,7 +245,7 @@ export type FormatPayload = {
 
 /**
  * A freely licensed photo from Wikimedia Commons, found through Wikidata
- * (pipeline/photos.py). Only CC0, public domain, CC BY and CC BY-SA files;
+ * (pipeline/photos.py). Only CC0, public domain, CC BY, CC BY-SA and GODL-India files;
  * the credit "Photo: {author}, {license}" must be shown with the image.
  */
 export type PlayerPhoto = {

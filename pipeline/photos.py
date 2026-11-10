@@ -21,8 +21,9 @@ How a photo finds its player (all by id, never by name):
 
 Nothing is guessed. An ESPNcricinfo id claimed by two Wikidata items is
 skipped, and so is a player whose ids lead to two items and an item that two
-players lead to. Only CC0, public domain, CC BY and CC BY-SA images are kept
-(any version); everything else is dropped and counted by licence.
+players lead to. Only CC0, public domain, CC BY and CC BY-SA images (any
+version) and the Government Open Data Licence - India are kept; everything
+else is dropped and counted by licence.
 
 Fail safe: photos never block a build. Results are cached in
 ``.cache/photos/photos.json`` (kept between CI runs by actions/cache) and
@@ -38,6 +39,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 import urllib.parse
 from collections import Counter, defaultdict
 from collections.abc import Iterable
@@ -63,7 +65,9 @@ USER_AGENT = (f"criclysis-photos/1.0 (https://github.com/atharva9806/criclysis) 
               f"python-urllib/{sys.version_info.major}.{sys.version_info.minor}")
 
 CACHE_FILE = CACHE_DIR / "photos" / "photos.json"
-CACHE_VERSION = 1
+#: 2: canonical file names, and entries without a thumbnail are asked for again.
+#: refresh.yml puts this in the actions/cache key.
+CACHE_VERSION = 2
 #: Cached answers younger than this are reused without asking again. Below a
 #: week, so the first run after the weekly cache key rotates refreshes them.
 MAX_AGE = timedelta(days=6)
@@ -76,6 +80,9 @@ MAX_URL_LENGTH = 6000
 THUMB_WIDTH = 480
 #: Consecutive failed Commons calls after which the step stops asking.
 MAX_FAILURES = 2
+#: Commons scales only so many images per request and leaves `thumburl` out for
+#: the rest, so a batch asks again for those, this many times at most.
+THUMB_ROUNDS = 6
 SPARQL_TIMEOUT, COMMONS_TIMEOUT = 75, 30
 RETRIES = 2
 
@@ -96,19 +103,30 @@ class PhotoSourceError(RuntimeError):
 _CC0 = re.compile(r"(cc0|cc zero)( \d+(\.\d+)?)?( universal)?")
 _PD = re.compile(r"(public domain|pd|pdm)( .*)?")
 _CC_BY = re.compile(r"cc by( sa)?( \d+(\.\d+)?)?( [a-z]+)*")
+#: Government Open Data Licence - India: reuse with attribution.
+_GODL = re.compile(r"godl( india)?")
+GODL_URL = "https://data.gov.in/government-open-data-license-india"
+
+# Why a file is not used, other than its licence. The log names examples.
+MISSING = "file missing on Commons"
+INVALID = "invalid file title"
+NO_THUMB = "no thumbnail from Commons"
+NOT_WIKIMEDIA = "thumbnail or page not on Wikimedia"
+NO_LICENCE = "no licence given"
+FILE_REASONS = (MISSING, INVALID, NO_THUMB, NOT_WIKIMEDIA, NO_LICENCE)
 
 
 def licence_accepted(short_name: str) -> bool:
-    """CC0, public domain, CC BY or CC BY-SA, any version or port.
+    """CC0, public domain, CC BY or CC BY-SA (any version or port), or GODL-India.
 
     ``short_name`` is Commons' ``LicenseShortName`` ("CC BY-SA 4.0",
-    "Public domain", "CC0"). NonCommercial and NoDerivatives variants, GFDL,
-    FAL and every other licence are refused.
+    "Public domain", "CC0", "GODL-India"). NonCommercial and NoDerivatives
+    variants, GFDL, FAL and every other licence are refused.
     """
     norm = " ".join(re.sub(r"[-_]", " ", short_name.lower()).split())
     if not norm or {"nc", "nd"} & set(norm.split()):
         return False
-    return any(p.fullmatch(norm) for p in (_CC0, _PD, _CC_BY))
+    return any(p.fullmatch(norm) for p in (_CC0, _PD, _CC_BY, _GODL))
 
 
 class _Text(HTMLParser):
@@ -149,18 +167,27 @@ def _https(url: str) -> str:
 
 
 def to_photo(info: dict) -> tuple[dict | None, str | None]:
-    """(photo, None) for an acceptable Commons file, else (None, why not)."""
+    """(photo, None) for an acceptable Commons file, else (None, why not):
+    the licence's name, or one of FILE_REASONS."""
     if info.get("missing"):
-        return None, "file missing on Commons"
+        return None, MISSING
+    if info.get("invalid"):
+        return None, INVALID
     licence = plain_text(info.get("license", ""))
+    if not licence:
+        return None, NO_LICENCE
     if not licence_accepted(licence):
-        return None, licence or "no licence given"
-    thumb = _https(info.get("thumbUrl", ""))
+        return None, licence
+    if not info.get("thumbUrl"):
+        return None, NO_THUMB
+    thumb = _https(info["thumbUrl"])
     page = _https(info.get("pageUrl", ""))
     if not thumb.startswith("https://upload.wikimedia.org/") or \
             not page.startswith("https://commons.wikimedia.org/"):
-        return None, "no thumbnail"
+        return None, NOT_WIKIMEDIA
     licence_url = _https(plain_text(info.get("licenseUrl", "")))
+    if not licence_url and _GODL.fullmatch(" ".join(re.sub(r"[-_]", " ", licence.lower()).split())):
+        licence_url = GODL_URL
     return {
         "thumbUrl": thumb,
         "pageUrl": page,
@@ -173,9 +200,23 @@ def to_photo(info: dict) -> tuple[dict | None, str | None]:
 # ---------------------------------------------------------------------------
 # Wikidata
 # ---------------------------------------------------------------------------
-def _file_name(image_url: str) -> str:
-    """http://commons.wikimedia.org/wiki/Special:FilePath/A%20b.jpg -> 'A b.jpg'."""
-    return urllib.parse.unquote(image_url.rsplit("/", 1)[-1]).replace("_", " ")
+def file_name(value: str) -> str:
+    """A P18 value as Commons' canonical file name (the title without "File:").
+
+    P18 comes back from SPARQL as a Special:FilePath URL with the name
+    percent-encoded ("Kagiso_Rabada_%282%29.jpg"). Decoded, underscores and
+    runs of spaces become one space, direction marks go, Unicode is NFC and
+    the first letter is upper case, as MediaWiki normalises titles. Anything
+    this misses, Commons reports in ``normalized`` and parse_imageinfo maps it
+    back. File names cannot contain "/", so the last path segment is the name.
+    """
+    name = urllib.parse.unquote(value.rsplit("/", 1)[-1])
+    if name[:5].lower() == "file:":
+        name = name[5:]
+    name = re.sub(r"[\u200e\u200f\u202a-\u202e]", "", name)
+    name = " ".join(unicodedata.normalize("NFC", name).replace("_", " ").split())
+    first = name[:1].upper()
+    return first + name[1:] if len(first) == 1 else name
 
 
 def parse_claims(payload: dict) -> dict[str, dict[str, str | None]]:
@@ -197,7 +238,7 @@ def parse_claims(payload: dict) -> dict[str, dict[str, str | None]]:
             continue
         cid = r["id"]["value"].strip()
         qid = r["item"]["value"].rsplit("/", 1)[-1]
-        image = _file_name(r["image"]["value"]) if "image" in r else None
+        image = file_name(r["image"]["value"]) if "image" in r else None
         known = claims[cid].get(qid)
         if qid not in claims[cid] or (image is not None and (known is None or image < known)):
             claims[cid][qid] = image
@@ -258,7 +299,10 @@ def parse_imageinfo(payload: dict) -> dict[str, dict]:
             seen.add(title)
             title = asked[title]
         name = title.split(":", 1)[-1].replace("_", " ")
-        if page.get("missing") or page.get("invalid"):
+        if page.get("invalid"):
+            out[name] = {"invalid": True, "error": str(page.get("invalidreason") or "")}
+            continue
+        if page.get("missing"):
             out[name] = {"missing": True}
             continue
         info = (page.get("imageinfo") or [None])[0]
@@ -269,14 +313,45 @@ def parse_imageinfo(payload: dict) -> dict[str, dict]:
         out[name] = {"thumbUrl": info.get("thumburl") or "", "pageUrl": info.get("descriptionurl") or "",
                      "artist": value("Artist"), "license": value("LicenseShortName"),
                      "licenseUrl": value("LicenseUrl")}
+        if info.get("thumberror"):
+            out[name]["error"] = str(info["thumberror"])
     return out
 
 
-def fetch_commons_batch(files: list[str]) -> dict[str, dict]:
-    """One batch, following continuations and waiting out maxlag (twice at most)."""
+def complete(info: dict | None) -> bool:
+    """Whether a Commons answer is final: a thumbnail, or no such file."""
+    return bool(info) and bool(info.get("thumbUrl") or info.get("missing") or info.get("invalid"))
+
+
+def fetch_commons_batch(files: list[str]) -> tuple[dict[str, dict], int]:
+    """One batch: {file name: info} and the number of requests it took.
+
+    Commons gives a thumbnail URL for only so many files per request and
+    leaves ``thumburl`` out for the rest, so the files answered without one
+    are asked for again, up to THUMB_ROUNDS times while that makes progress.
+    """
+    out: dict[str, dict] = {}
+    todo, requests = list(files), 0
+    for _round in range(THUMB_ROUNDS):
+        got, n = _fetch_titles(todo)
+        requests += n
+        for name, info in got.items():
+            if complete(info) or not complete(out.get(name)):
+                out[name] = info
+        done = [f for f in todo if complete(out.get(f))]
+        todo = [f for f in todo if not complete(out.get(f))]
+        if not todo or not done:
+            break
+    return out, requests
+
+
+def _fetch_titles(files: list[str]) -> tuple[dict[str, dict], int]:
+    """One query, following continuations and waiting out maxlag (twice at most)."""
     out: dict[str, dict] = {}
     extra: dict = {}
+    requests = 0
     for _ in range(4):
+        requests += 1
         text = net.get(commons_url(files, extra), use_cache=False, timeout=COMMONS_TIMEOUT,
                        retries=RETRIES, headers={"User-Agent": USER_AGENT})
         try:
@@ -286,11 +361,13 @@ def fetch_commons_batch(files: list[str]) -> dict[str, dict]:
         if payload.get("error", {}).get("code") == "maxlag":
             time.sleep(min(30, float(payload["error"].get("lag") or 5)))
             continue
-        out.update(parse_imageinfo(payload))
+        for name, info in parse_imageinfo(payload).items():
+            if complete(info) or not complete(out.get(name)):
+                out[name] = info
         if "continue" not in payload:
             break
         extra = {k: str(v) for k, v in payload["continue"].items()}
-    return out
+    return out, requests
 
 
 # ---------------------------------------------------------------------------
@@ -372,8 +449,10 @@ def _brief(exc: Exception) -> str:
     return re.sub(r"(https?://[^\s?]+)\?\S*?(:?)(?=\s|$)", r"\1?...\2", str(exc))
 
 
-def _counts(counter: Counter) -> str:
-    return ", ".join(f"{k} {n}" for k, n in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0])))
+def _counts(counter: Counter, examples: dict[str, list[str]] | None = None) -> str:
+    """"GFDL 2, file missing on Commons 1 [File:X.jpg]", largest first."""
+    return ", ".join(f"{k} {n}" + (f" [{'; '.join(examples[k])}]" if examples and examples.get(k) else "")
+                     for k, n in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
@@ -422,8 +501,9 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
     commons: dict[str, dict] = cache.get("commons", {})
     files = sorted(set(with_image.values()))
     # Files never seen first, then the oldest, so a run cut short by the
-    # budget still moves the cache forward.
-    stale = sorted((f for f in files if not _fresh(commons.get(f), now)),
+    # budget still moves the cache forward. An answer without a thumbnail is
+    # asked for again on every run.
+    stale = sorted((f for f in files if not (_fresh(commons.get(f), now) and complete(commons.get(f)))),
                    key=lambda f: (f in commons, str(commons.get(f, {}).get("fetched", "")), f))
     failures = 0
     fetched: set[str] = set()
@@ -435,23 +515,26 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
             log.warning("photos: %s; %d files keep their cached Commons metadata or go without",
                         why, sum(len(b) for b in pending[i:]))
             break
-        stats["commonsCalls"] += 1
         try:
-            got = fetch_commons_batch(batch)
+            got, requests = fetch_commons_batch(batch)
+            stats["commonsCalls"] += requests
         except (net.Blocked, net.FetchError, PhotoSourceError, OSError) as exc:
             failures += 1
+            stats["commonsCalls"] += 1
             stats["commonsFailed"] += 1
             log.warning("photos: Commons call for %d files failed (%s)", len(batch), _brief(exc))
             continue
         failures = 0
         stamp = now.isoformat(timespec="seconds")
         for name, info in got.items():
-            commons[name] = {**info, "fetched": stamp}
-            fetched.add(name)
+            if complete(info) or not complete(commons.get(name)):
+                commons[name] = {**info, "fetched": stamp}
+                fetched.add(name)
 
     photos: dict[str, dict] = {}
     licences: Counter = Counter()
     rejected: Counter = Counter()
+    examples: dict[str, list[str]] = defaultdict(list)
     for pid in sorted(with_image):
         info = commons.get(with_image[pid])
         if info is None:
@@ -463,6 +546,9 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
             licences[photo["license"]] += 1
         else:
             rejected[reason] += 1
+            if reason in FILE_REASONS and len(examples[reason]) < 3:
+                error = f" ({info['error']})" if info.get("error") else ""
+                examples[reason].append(f"File:{with_image[pid]}{error}")
     stats["accepted"], stats["rejected"] = len(photos), sum(rejected.values())
 
     if wikidata:
@@ -475,7 +561,7 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
     line = (f"photos: {stats['withCricinfoId']} players with a cricinfo id, {stats['matched']} matched "
             f"on Wikidata, {stats['withImage']} with an image, {stats['accepted']} accepted "
             f"(licences: {_counts(licences) or 'none'}), {stats['rejected']} rejected"
-            + (f" ({_counts(rejected)})" if rejected else ""))
+            + (f" ({_counts(rejected, examples)})" if rejected else ""))
     if stats["unavailable"]:
         line += f", {stats['unavailable']} without Commons metadata"
     log.info("%s", line)

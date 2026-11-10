@@ -293,7 +293,7 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
             "id": "wikimedia", "used": bool(photo_map),
             "note": f"Photos of {len(photo_map)} players from Wikimedia Commons, found through "
                     "Wikidata's ESPNcricinfo player id (P2697) and Cricsheet's people register; "
-                    "only CC0, public domain, CC BY and CC BY-SA images, each credited with its "
+                    "only CC0, public domain, CC BY, CC BY-SA and GODL-India images, each credited with its "
                     "author and licence"}]
 
     provenance = {

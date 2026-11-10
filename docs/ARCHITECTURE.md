@@ -131,7 +131,7 @@ type PlayerFile = {
 // Optional enrichment from Wikimedia Commons (pipeline/photos.py), only with `build --photos`.
 // Absent when the player has no usable image. Licence is CC0, public domain, CC BY, CC BY-SA or GODL-India.
 type PlayerPhoto = {
-  thumbUrl: string;          // 480px-wide thumbnail: https://upload.wikimedia.org/..., or commons.wikimedia.org
+  thumbUrl: string;          // 480px-wide thumbnail: https://upload.wikimedia.org/... or thumb.wikimedia.org/wikipedia/commons/..., or commons.wikimedia.org
                              // /w/thumb.php or /wiki/Special:FilePath/<name>?width=480 (no other host)
   pageUrl: string;           // the file's page, https://commons.wikimedia.org/wiki/File:...
   author: string;            // Commons "Artist", HTML stripped; "Unknown author" when empty

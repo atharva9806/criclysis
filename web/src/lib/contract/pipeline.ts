@@ -249,7 +249,7 @@ export type FormatPayload = {
  * the credit "Photo: {author}, {license}" must be shown with the image.
  */
 export type PlayerPhoto = {
-  /** A 480px-wide thumbnail: https://upload.wikimedia.org/..., or commons.wikimedia.org /w/thumb.php or /wiki/Special:FilePath/...?width=480. */
+  /** A 480px-wide thumbnail: https://upload.wikimedia.org/... or https://thumb.wikimedia.org/wikipedia/commons/..., or commons.wikimedia.org /w/thumb.php or /wiki/Special:FilePath/...?width=480. */
   thumbUrl: string;
   /** The file's description page on commons.wikimedia.org. */
   pageUrl: string;

@@ -328,6 +328,9 @@ class UrlShapeTests(PhotoTestCase):
                 "https://commons.wikimedia.org/w/thumb.php?f=P.JPG&width=480",
             "http://commons.wikimedia.org/wiki/Special:FilePath/Phillip_Hughes.JPG?width=480":
                 "https://commons.wikimedia.org/wiki/Special:FilePath/Phillip_Hughes.JPG?width=480",
+            # The shape run 42778885850 logged for 692 files.
+            "https://thumb.wikimedia.org/wikipedia/commons/7/7e/Phillip_Hughes.JPG/480px-Phillip_Hughes.JPG":
+                "https://thumb.wikimedia.org/wikipedia/commons/7/7e/Phillip_Hughes.JPG/480px-Phillip_Hughes.JPG",
         }
         for given, expected in accepted.items():
             photo, why = self.photo(thumbUrl=given)
@@ -336,6 +339,8 @@ class UrlShapeTests(PhotoTestCase):
             self.assertEqual(check(PHOTO, photo, "photo"), [], given)
         for given in ("https://example.org/Phillip_Hughes.JPG",
                       "https://upload.wikimedia.org.example.org/x.jpg",
+                      "https://thumb.wikimedia.org/wikipedia/en/x.jpg",
+                      "https://thumb.wikimedia.org.example.org/wikipedia/commons/x.jpg",
                       "https://commons.wikimedia.org/wiki/File:Phillip_Hughes.JPG",
                       "https://commons.wikimedia.org/w/index.php?title=Special:FilePath/X.jpg",
                       "https://en.wikipedia.org/w/thumb.php?f=X.jpg&w=480",

@@ -173,13 +173,15 @@ def _parts(url: str) -> tuple[str, str, str, str]:
 
 def wikimedia_thumb(url: str) -> str | None:
     """The thumbnail URL as https, if it is one of Wikimedia's shapes, else None:
-    https://upload.wikimedia.org/..., or on commons.wikimedia.org /w/thumb.php
-    or /wiki/Special:FilePath/. Any other host is refused, so the site never
+    https://upload.wikimedia.org/... or https://thumb.wikimedia.org/wikipedia/commons/...
+    (Wikimedia's thumbnail host), or on commons.wikimedia.org /w/thumb.php or
+    /wiki/Special:FilePath/. Any other host is refused, so the site never
     hotlinks from elsewhere."""
     scheme, host, path, query = _parts(url)
     if scheme not in ("http", "https"):
         return None
     if host == "upload.wikimedia.org" or (
+            host == "thumb.wikimedia.org" and path.startswith("/wikipedia/commons/")) or (
             host == "commons.wikimedia.org" and
             (path == "/w/thumb.php" or path.startswith("/wiki/Special:FilePath/"))):
         return urllib.parse.urlunsplit(("https", host, urllib.parse.urlsplit(_https(url.strip())).path,

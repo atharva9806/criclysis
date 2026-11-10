@@ -8,6 +8,9 @@ import { fmtParam, qs, type SearchParams } from "@/lib/params";
 import { FormatTabs, MatchGrid, Muted, PageHeader, RecordCells, RecordHeads, Section, TableWrap } from "@/components/data";
 import { CardGridSkeleton } from "@/components/Loading";
 import { FMTS, findTeam } from "../../../lookup";
+import { teamMark } from "@/lib/teams/flags";
+import { FaceOff } from "@/components/broadcast/FaceOff";
+import { Stat, StatGrid } from "@/components/ui";
 
 type Props = { params: Promise<{ teamId: string; oppId: string }>; searchParams: Promise<SearchParams> };
 
@@ -23,6 +26,12 @@ async function Body({ teamId, oppId, fmt, T, O, minM }: { teamId: string; oppId:
     <>
       {h.summary ? (
         <Section id="summary" title="Summary" sub={`${T} ${record(h.summary, minM)} against ${O}.`}>
+          <StatGrid className="mb-4 lg:grid-cols-4">
+            <Stat label="Matches" value={h.summary.matches} sample={`${FORMAT_LABEL[fmt]}s in the data`} />
+            <Stat label={`${T} won`} value={h.summary.won} sample={`of ${plural(h.summary.matches, "match", "matches")}`} />
+            <Stat label={`${O} won`} value={h.summary.lost} sample={`of ${plural(h.summary.matches, "match", "matches")}`} />
+            <Stat label="Tied, drawn, no result" value={h.summary.tied + h.summary.drawn + h.summary.noResult} sample={`${h.summary.tied} tied · ${h.summary.drawn} drawn · ${h.summary.noResult} NR`} />
+          </StatGrid>
           <TableWrap caption="Head to head record">
             <thead>
               <RecordHeads first="" />
@@ -62,6 +71,9 @@ export default async function HeadToHeadPage({ params, searchParams }: Props) {
         title={`${team.label} v ${opp.label}`}
         actions={<FormatTabs formats={shared} active={fmt} href={(f) => `/teams/${teamId}/vs/${oppId}${qs({ f })}`} />}
       />
+      <div className="mb-10">
+        <FaceOff a={teamMark(team.name)} b={teamMark(opp.name)} hrefA={`/teams/${teamId}${qs({ f: fmt })}`} hrefB={`/teams/${oppId}${qs({ f: fmt })}`} />
+      </div>
       {team.gender !== opp.gender ? (
         <Muted>
           {team.label} and {opp.label} play in different competitions (men&apos;s and women&apos;s), so there are no matches between them.

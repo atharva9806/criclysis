@@ -178,7 +178,7 @@ export function InningsBars({ data, unit, color = CHART.series[0], average }: { 
   );
 }
 
-export type ResultYear = { year: number; won: number; lost: number; other: number; matches: number };
+export type ResultYear = { year: string | number; won: number; lost: number; other: number; matches: number };
 
 /** Results per calendar year as stacked bars (won, lost, other); counts, not rates, so a thin year never looks precise. */
 export function ResultsByYear({ data, colors }: { data: ResultYear[]; colors?: { won: string; lost: string; other: string } }) {
@@ -191,7 +191,7 @@ export function ResultsByYear({ data, colors }: { data: ResultYear[]; colors?: {
         <XAxis dataKey="year" tick={axisTick} axisLine={false} tickLine={false} minTickGap={6} />
         <YAxis tick={axisTick} axisLine={false} tickLine={false} allowDecimals={false} width={40} />
         <Tooltip cursor={{ fill: "var(--surface-2)" }} />
-        <Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
+        <Legend iconType="square" wrapperStyle={{ fontSize: 12 }} itemSorter={null} />
         <Bar dataKey="won" name="Won" stackId="r" fill={c.won} isAnimationActive={!still} maxBarSize={40} />
         <Bar dataKey="lost" name="Lost" stackId="r" fill={c.lost} isAnimationActive={!still} maxBarSize={40} />
         <Bar dataKey="other" name="Tied, drawn or no result" stackId="r" fill={c.other} radius={[3, 3, 0, 0]} isAnimationActive={!still} maxBarSize={40} />

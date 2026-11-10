@@ -105,7 +105,6 @@ _PD = re.compile(r"(public domain|pd|pdm)( .*)?")
 _CC_BY = re.compile(r"cc by( sa)?( \d+(\.\d+)?)?( [a-z]+)*")
 #: Government Open Data Licence - India: reuse with attribution.
 _GODL = re.compile(r"godl( india)?")
-GODL_URL = "https://data.gov.in/government-open-data-license-india"
 
 # Why a file is not used, other than its licence. The log names examples.
 MISSING = "file missing on Commons"
@@ -186,8 +185,11 @@ def to_photo(info: dict) -> tuple[dict | None, str | None]:
             not page.startswith("https://commons.wikimedia.org/"):
         return None, NOT_WIKIMEDIA
     licence_url = _https(plain_text(info.get("licenseUrl", "")))
+    # Commons usually gives the licence URL. When a GODL-India file has none,
+    # link the file page, which carries the full licence
+    # template, rather than a licence URL we cannot verify.
     if not licence_url and _GODL.fullmatch(" ".join(re.sub(r"[-_]", " ", licence.lower()).split())):
-        licence_url = GODL_URL
+        licence_url = page
     return {
         "thumbUrl": thumb,
         "pageUrl": page,

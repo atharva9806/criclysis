@@ -337,7 +337,7 @@ class LicenceTests(PhotoTestCase):
         self.assertEqual(got["aaaa0001"]["author"], "Prime Minister's Office")
         self.assertEqual(got["aaaa0001"]["licenseUrl"],
                          "https://data.gov.in/sites/default/files/Gazette_Notification_OGDL.pdf")
-        self.assertEqual(got["aaaa0002"]["licenseUrl"], photos.GODL_URL)
+        self.assertEqual(got["aaaa0002"]["licenseUrl"], got["aaaa0002"]["pageUrl"])
         self.assertEqual(check(PHOTO, got["aaaa0002"], "photo"), [])
 
     def test_missing_files_are_rejected(self):

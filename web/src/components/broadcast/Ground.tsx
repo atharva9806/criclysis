@@ -3,7 +3,7 @@
  * glow, the stands with a crowd texture, the oval outfield with mowing
  * stripes, the rope, the 30-yard circle and the pitch. Decoration only
  * (aria-hidden), no photograph and no data. It fills its positioned parent;
- * put it in a `scheme-dark` section so the text over it uses dark tokens.
+ * put it in a `theme-dark` section so the text over it uses dark tokens.
  *
  * The glows breathe and a light sweeps once on load (app/globals.css);
  * both stop under prefers-reduced-motion.
@@ -38,7 +38,11 @@ function Tower({ x, y, s = 1, id }: { x: number; y: number; s?: number; id: stri
   );
 }
 
-export function Ground({ variant = "hero", id = "ground", className = "" }: { variant?: Variant; id?: string; className?: string }) {
+/**
+ * `shift` moves the field (oval, rope, pitch) sideways in view-box units, so a
+ * page can keep the pitch clear of its text; the towers stay put.
+ */
+export function Ground({ variant = "hero", id = "ground", shift = 0, className = "" }: { variant?: Variant; id?: string; shift?: number; className?: string }) {
   const hero = variant === "hero";
   // The band crops to the stands and the far rope; the hero shows the whole oval.
   const view = hero ? "0 0 1600 700" : "0 120 1600 420";
@@ -66,7 +70,7 @@ export function Ground({ variant = "hero", id = "ground", className = "" }: { va
           <stop offset="1" stopColor="#eaf1ff" stopOpacity="0" />
         </linearGradient>
         <radialGradient id={`${id}-turf`} cx="50%" cy="35%" r="70%">
-          <stop offset="0" stopColor="#2a8a4c" />
+          <stop offset="0" stopColor="#33a258" />
           <stop offset="0.55" stopColor="#14522b" />
           <stop offset="1" stopColor="#082414" />
         </radialGradient>
@@ -110,6 +114,7 @@ export function Ground({ variant = "hero", id = "ground", className = "" }: { va
       <ellipse cx="800" cy="700" rx="1180" ry="380" fill="none" stroke="#2a3a5e" strokeWidth="2" opacity="0.7" />
       <ellipse cx="800" cy="700" rx="960" ry="282" fill="#0a1222" />
 
+      <g transform={`translate(${shift} 0)`}>
       {/* The outfield, mowing stripes, rope and the 30-yard circle. */}
       <ellipse cx="800" cy="690" rx="900" ry="250" fill={`url(#${id}-turf)`} />
       <g clipPath={`url(#${id}-oval)`}>
@@ -122,14 +127,15 @@ export function Ground({ variant = "hero", id = "ground", className = "" }: { va
       <path d="M786 560 L814 560 L828 680 L772 680 Z" fill={`url(#${id}-pitch)`} />
       <path d="M782 572 L818 572 M772 668 L828 668" stroke="#ffffff" strokeOpacity="0.75" strokeWidth="1.6" />
       <path d="M795 560 L795 566 M800 560 L800 566 M805 560 L805 566" stroke="#ffffff" strokeOpacity="0.8" strokeWidth="1.4" />
+      </g>
 
       {/* Floodlight towers. */}
-      <Tower id={id} x={110} y={60} />
-      <Tower id={id} x={1410} y={60} />
+      <Tower id={id} x={hero ? 250 : 120} y={60} />
+      <Tower id={id} x={hero ? 1270 : 1400} y={60} />
       {hero ? (
         <>
-          <Tower id={id} x={520} y={150} s={0.55} />
-          <Tower id={id} x={1040} y={150} s={0.55} />
+          <Tower id={id} x={600} y={160} s={0.5} />
+          <Tower id={id} x={960} y={160} s={0.5} />
         </>
       ) : null}
 

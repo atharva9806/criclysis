@@ -3,12 +3,13 @@
 /*
  * Criclysis design tokens: a dark-first broadcast package.
  *
- * Raw tokens live on :root as CSS variables. Each colour is a light-dark()
- * pair. Dark is the default (color-scheme: dark); an explicit light choice
- * (data-theme="light" on <html>, set before paint by the inline script in
- * app/layout.tsx) switches color-scheme to light. light-dark() resolves on the
- * element that uses the token, so a subtree with `scheme-dark` (the nav, the
- * floodlit heroes, the score bug) stays dark in the light theme too.
+ * Raw tokens live on :root as CSS variables. Dark is the default; an explicit
+ * light choice (data-theme="light" on <html>, set before paint by the inline
+ * script in app/layout.tsx) swaps in the light values. `.theme-dark` re-applies
+ * the dark values to a subtree, so the nav, the floodlit heroes and the score
+ * bug stay dark in the light theme too. (Explicit blocks rather than
+ * light-dark(): the CSS minifier polyfills light-dark() by resolving it once
+ * at :root, which would make a dark subtree impossible.)
  *
  * Tailwind utilities (bg-surface, text-muted, border-line, ...) reference
  * these through @theme inline, and Recharts reads the same variables
@@ -20,59 +21,121 @@
  * Chart colours are Okabe-Ito based (colour-blind safe) and at least 3:1
  * against the surface they are drawn on. Team colours: lib/teams/colors.ts.
  */
-:root {
+/* Dark, the default, and any subtree that must stay dark in both themes (the nav, the floodlit heroes, the score bug). */
+:root,
+.theme-dark {
   color-scheme: dark;
-
-  --bg: light-dark(#f1f3f8, #060a13);
-  --surface: light-dark(#ffffff, #0d1422);
-  --surface-2: light-dark(#eef1f6, #131c2e);
-  --surface-3: light-dark(#e1e6ee, #1b263c);
-  --line: light-dark(#dbe1ea, #24324c);
-  --line-strong: light-dark(#c2cad7, #364a6e);
+  color: var(--fg);
+  --bg: #060a13;
+  --surface: #0d1422;
+  --surface-2: #131c2e;
+  --surface-3: #1b263c;
+  --line: #24324c;
+  --line-strong: #364a6e;
   /* Borders that identify a control (inputs, secondary buttons): at least 3:1. */
-  --control: light-dark(#737e91, #62769c);
-
-  --fg: light-dark(#0a1020, #eef2f8);
-  --muted: light-dark(#4b566a, #9eabc1);
-
+  --control: #62769c;
+  --fg: #eef2f8;
+  --muted: #9eabc1;
   /* One electric accent: the pink of the day-night ball. */
-  --accent: light-dark(#c4106a, #ff4fa3);
-  --accent-strong: light-dark(#9c0c54, #ff8cc2);
-  --accent-soft: light-dark(#fde7f1, #3a1028);
-  --on-accent: light-dark(#ffffff, #1a0010);
-
-  --positive: light-dark(#13693f, #4ade80);
-  --positive-soft: light-dark(#e3f4ea, #0f2a1c);
-  --negative: light-dark(#b42d22, #ff8a80);
-  --negative-soft: light-dark(#fbe9e7, #3a1614);
-  --warning: light-dark(#8f5400, #f5b84a);
-  --warning-soft: light-dark(#fbf0dc, #33250c);
-
+  --accent: #ff4fa3;
+  --accent-strong: #ff8cc2;
+  --accent-soft: #3a1028;
+  --on-accent: #1a0010;
+  --positive: #4ade80;
+  --positive-soft: #0f2a1c;
+  --negative: #ff8a80;
+  --negative-soft: #3a1614;
+  --warning: #f5b84a;
+  --warning-soft: #33250c;
   /* Kept for components that still name the scoreboard panel. */
   --inverse: #0d1422;
   --on-inverse: #eef2f8;
   --on-inverse-muted: #b4bfcf;
-
   /* Charts. Team 1 bats first, team 2 chases (components/replay/format.ts). */
-  --chart-1: light-dark(#0072b2, #5cb3f0);
-  --chart-2: light-dark(#c85a00, #f08a4b);
-  --chart-3: light-dark(#00845f, #3cc79a);
-  --chart-4: light-dark(#b8508c, #e39ac2);
-  --chart-5: light-dark(#8a6d00, #e8c547);
-  --chart-6: light-dark(#5f6b7a, #a3adbb);
-  --chart-grid: light-dark(#e6e9ee, #1e2a40);
+  --chart-1: #5cb3f0;
+  --chart-2: #f08a4b;
+  --chart-3: #3cc79a;
+  --chart-4: #e39ac2;
+  --chart-5: #e8c547;
+  --chart-6: #a3adbb;
+  --chart-grid: #1e2a40;
   --chart-axis: var(--muted);
-  --chart-ref: light-dark(#9aa3af, #5b6a84);
-
-  --shadow-c1: light-dark(rgb(16 24 40 / 0.05), rgb(0 0 0 / 0.2));
-  --shadow-c2: light-dark(rgb(16 24 40 / 0.07), rgb(0 0 0 / 0.25));
-  --shadow-c3: light-dark(rgb(16 24 40 / 0.14), rgb(0 0 0 / 0.55));
-
+  --chart-ref: #5b6a84;
+  --shadow-c1: rgb(0 0 0 / 0.2);
+  --shadow-c2: rgb(0 0 0 / 0.25);
+  --shadow-c3: rgb(0 0 0 / 0.55);
   --header-h: 3.75rem;
 }
 
+/* The light theme, chosen with the toggle. */
 :root[data-theme="light"] {
   color-scheme: light;
+  --bg: #f1f3f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --surface-3: #e1e6ee;
+  --line: #dbe1ea;
+  --line-strong: #c2cad7;
+  --control: #737e91;
+  --fg: #0a1020;
+  --muted: #4b566a;
+  --accent: #c4106a;
+  --accent-strong: #9c0c54;
+  --accent-soft: #fde7f1;
+  --on-accent: #ffffff;
+  --positive: #13693f;
+  --positive-soft: #e3f4ea;
+  --negative: #b42d22;
+  --negative-soft: #fbe9e7;
+  --warning: #8f5400;
+  --warning-soft: #fbf0dc;
+  --chart-1: #0072b2;
+  --chart-2: #c85a00;
+  --chart-3: #00845f;
+  --chart-4: #b8508c;
+  --chart-5: #8a6d00;
+  --chart-6: #5f6b7a;
+  --chart-grid: #e6e9ee;
+  --chart-ref: #9aa3af;
+  --shadow-c1: rgb(16 24 40 / 0.05);
+  --shadow-c2: rgb(16 24 40 / 0.07);
+  --shadow-c3: rgb(16 24 40 / 0.14);
+}
+/* A dark subtree inside the light theme takes the dark values again. */
+:root[data-theme="light"] .theme-dark {
+  color-scheme: dark;
+  color: var(--fg);
+  --bg: #060a13;
+  --surface: #0d1422;
+  --surface-2: #131c2e;
+  --surface-3: #1b263c;
+  --line: #24324c;
+  --line-strong: #364a6e;
+  --control: #62769c;
+  --fg: #eef2f8;
+  --muted: #9eabc1;
+  --accent: #ff4fa3;
+  --accent-strong: #ff8cc2;
+  --accent-soft: #3a1028;
+  --on-accent: #1a0010;
+  --positive: #4ade80;
+  --positive-soft: #0f2a1c;
+  --negative: #ff8a80;
+  --negative-soft: #3a1614;
+  --warning: #f5b84a;
+  --warning-soft: #33250c;
+  --chart-1: #5cb3f0;
+  --chart-2: #f08a4b;
+  --chart-3: #3cc79a;
+  --chart-4: #e39ac2;
+  --chart-5: #e8c547;
+  --chart-6: #a3adbb;
+  --chart-grid: #1e2a40;
+  --chart-ref: #5b6a84;
+  --shadow-c1: rgb(0 0 0 / 0.2);
+  --shadow-c2: rgb(0 0 0 / 0.25);
+  --shadow-c3: rgb(0 0 0 / 0.55);
+  --chart-axis: var(--muted);
 }
 
 /* `dark:` matches everywhere except under an explicit light choice. */
@@ -441,7 +504,7 @@
 
 /*
  * The floodlit ground (components/broadcast/Ground.tsx). Always a night
- * match: the section sets scheme-dark, so its tokens resolve dark in both
+ * match: the section sets theme-dark, so its tokens resolve dark in both
  * themes. The glows breathe slowly; under reduced motion they hold still.
  */
 .ground-sweep {
@@ -476,6 +539,11 @@
   .pop {
     animation: var(--animate-pop);
   }
+}
+
+/* On a team-colour band the accent may not reach 3:1, so focus rings use the band's text colour (4.5:1 or more). */
+.on-team :focus-visible {
+  outline-color: currentColor;
 }
 
 /* A strip that scrolls sideways with snap points (player cards). */

@@ -112,9 +112,12 @@ import f_za from "flag-icons/flags/4x3/za.svg";
 import f_zm from "flag-icons/flags/4x3/zm.svg";
 import f_zw from "flag-icons/flags/4x3/zw.svg";
 import type { StaticImageData } from "next/image";
+
+/** Turbopack gives a URL string for an SVG import, webpack a StaticImageData; accept both. */
+type FlagAsset = string | StaticImageData;
 import { teamIdentity, type TeamIdentity } from "./colors";
 
-const FLAGS: Record<string, StaticImageData> = {
+const FLAGS: Record<string, FlagAsset> = {
   "ae": f_ae,
   "af": f_af,
   "ar": f_ar,
@@ -228,7 +231,9 @@ const FLAGS: Record<string, StaticImageData> = {
 export type TeamMark = TeamIdentity & { flagSrc: string | null };
 
 export function flagSrc(code: string | null | undefined): string | null {
-  return code ? (FLAGS[code]?.src ?? null) : null;
+  const asset = code ? FLAGS[code] : undefined;
+  if (!asset) return null;
+  return typeof asset === "string" ? asset : (asset.src ?? null);
 }
 
 export function teamMark(name: string | null | undefined, identity: TeamIdentity = teamIdentity(name)): TeamMark {

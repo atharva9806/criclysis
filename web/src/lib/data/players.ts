@@ -419,6 +419,46 @@ async function loadLeaders(fk: FormatKey, metric: "runs" | "wickets", limit: num
   return rows.map((r) => ({ ...r, value: r.value ?? 0 }));
 }
 
+/** A leader with what a player card needs: teams, role and photo. Presentational; not part of the contract. */
+export type LeaderCard = LeaderRow & { teams: string[]; role: string | null; photo: PlayerPhoto | null };
+
+/** As loadLeaders, with each player's teams, role and photo for the home page's player cards. */
+async function loadLeaderCards(fk: FormatKey, metric: "runs" | "wickets", limit: number): Promise<LeaderCard[]> {
+  const col = metric === "runs" ? careerStats.runs : careerStats.wickets;
+  const rows = await db
+    .select({
+      slug: players.slug,
+      name: players.name,
+      country: players.country,
+      teams: players.teams,
+      role: players.role,
+      photoThumbUrl: players.photoThumbUrl,
+      photoPageUrl: players.photoPageUrl,
+      photoAuthor: players.photoAuthor,
+      photoLicense: players.photoLicense,
+      photoLicenseUrl: players.photoLicenseUrl,
+      value: col,
+      innings: metric === "runs" ? careerStats.batInnings : careerStats.bowlInnings,
+      balls: metric === "runs" ? careerStats.balls : careerStats.bowlBalls,
+    })
+    .from(careerStats)
+    .innerJoin(players, eq(players.id, careerStats.playerId))
+    .where(and(eq(careerStats.formatKey, fk), isNotNull(col)))
+    .orderBy(sql`${col} DESC NULLS LAST`, asc(players.name))
+    .limit(Math.min(Math.max(limit, 1), 50));
+  return rows.map((r) => ({
+    slug: r.slug,
+    name: r.name,
+    country: r.country,
+    teams: r.teams ?? [],
+    role: r.role,
+    photo: toPlayerPhoto(r),
+    value: r.value ?? 0,
+    innings: r.innings,
+    balls: r.balls,
+  }));
+}
+
 /** Players by slug, for pages that only need names and links. */
 async function loadPlayerNames(slugs: string[]): Promise<{ slug: string; name: string }[]> {
   if (!slugs.length) return [];
@@ -430,4 +470,5 @@ export const getPlayerSummary = cached("getPlayerSummary", loadPlayerSummary);
 export const getPlayerHeader = cached("getPlayerHeader", loadPlayerHeader);
 export const listPlayers = cached("listPlayers", loadPlayers);
 export const getLeaders = cached("getLeaders", loadLeaders);
+export const getLeaderCards = cached("getLeaderCards", loadLeaderCards);
 export const getPlayerNames = cached("getPlayerNames", loadPlayerNames);

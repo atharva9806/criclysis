@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore, type ReactNode } from "react";
-import { Bar, BarChart, CartesianGrid, Legend, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ordinal } from "../numbers";
 
 /**
@@ -84,9 +84,12 @@ export function ChartFrame({
 export function PercentileRadar({
   data,
   series = [{ key: "percentile", name: "Percentile" }],
+  colors = CHART.series,
 }: {
   data: Record<string, string | number>[];
   series?: { key: string; name: string }[];
+  /** One colour per series; defaults to the Okabe-Ito chart tokens. */
+  colors?: readonly string[];
 }) {
   const still = useReducedMotion();
   return (
@@ -100,8 +103,8 @@ export function PercentileRadar({
             key={s.key}
             name={s.name}
             dataKey={s.key}
-            stroke={CHART.series[i % CHART.series.length]}
-            fill={CHART.series[i % CHART.series.length]}
+            stroke={colors[i % colors.length]}
+            fill={colors[i % colors.length]}
             fillOpacity={series.length > 1 ? 0.12 : 0.2}
             strokeWidth={2}
             isAnimationActive={!still}
@@ -132,6 +135,66 @@ export function YearBars({ data, unit, color = CHART.series[0] }: { data: { year
           separator=""
         />
         <Bar dataKey="value" fill={color} radius={[4, 4, 0, 0]} maxBarSize={36} isAnimationActive={!still} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+export type InningsBar = { key: string; value: number; notOut: boolean; label: string };
+
+/**
+ * One bar per recent innings, oldest on the left: runs (or wickets). Not-out
+ * innings are drawn hollow, so the difference never rests on colour alone;
+ * the tooltip and the table below the chart carry every figure.
+ */
+/** `average` draws a dashed reference line; the caller names it in a key, since a label on the line can collide with a bar. */
+export function InningsBars({ data, unit, color = CHART.series[0], average }: { data: InningsBar[]; unit: string; color?: string; average?: number | null }) {
+  const still = useReducedMotion();
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ left: -12, right: 8, top: 12, bottom: 0 }} accessibilityLayer={false}>
+        <CartesianGrid stroke={CHART.grid} vertical={false} />
+        <XAxis dataKey="key" tick={false} axisLine={{ stroke: CHART.grid }} tickLine={false} height={8} />
+        <YAxis tick={axisTick} axisLine={false} tickLine={false} allowDecimals={false} width={44} />
+        {average != null ? (
+          <ReferenceLine y={average} stroke={CHART.fg} strokeOpacity={0.55} strokeDasharray="5 4" />
+        ) : null}
+        <Tooltip
+          cursor={{ fill: "var(--surface-2)" }}
+          labelFormatter={() => ""}
+          formatter={(v, _n, item) => {
+            const p = item?.payload as InningsBar | undefined;
+            return [`${v}${p?.notOut ? "*" : ""} ${unit} · ${p?.label ?? ""}`, ""];
+          }}
+          separator=""
+        />
+        <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={28} isAnimationActive={!still}>
+          {data.map((d) => (
+            <Cell key={d.key} fill={color} fillOpacity={d.notOut ? 0.18 : 1} stroke={color} strokeWidth={d.notOut ? 1.5 : 0} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+export type ResultYear = { year: number; won: number; lost: number; other: number; matches: number };
+
+/** Results per calendar year as stacked bars (won, lost, other); counts, not rates, so a thin year never looks precise. */
+export function ResultsByYear({ data, colors }: { data: ResultYear[]; colors?: { won: string; lost: string; other: string } }) {
+  const still = useReducedMotion();
+  const c = colors ?? { won: "var(--chart-3)", lost: "var(--chart-2)", other: "var(--chart-6)" };
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ left: -16, right: 8, top: 8, bottom: 0 }} accessibilityLayer={false}>
+        <CartesianGrid stroke={CHART.grid} vertical={false} />
+        <XAxis dataKey="year" tick={axisTick} axisLine={false} tickLine={false} minTickGap={6} />
+        <YAxis tick={axisTick} axisLine={false} tickLine={false} allowDecimals={false} width={40} />
+        <Tooltip cursor={{ fill: "var(--surface-2)" }} />
+        <Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="won" name="Won" stackId="r" fill={c.won} isAnimationActive={!still} maxBarSize={40} />
+        <Bar dataKey="lost" name="Lost" stackId="r" fill={c.lost} isAnimationActive={!still} maxBarSize={40} />
+        <Bar dataKey="other" name="Tied, drawn or no result" stackId="r" fill={c.other} radius={[3, 3, 0, 0]} isAnimationActive={!still} maxBarSize={40} />
       </BarChart>
     </ResponsiveContainer>
   );

@@ -92,8 +92,8 @@ export default function Nav() {
   }, [open]);
 
   return (
-    // A dark broadcast strip in both themes (scheme-dark resolves the tokens dark).
-    <header className="sticky top-0 z-40 border-b border-line bg-bg/95 text-fg scheme-dark backdrop-blur-md supports-[not(backdrop-filter:blur(1px))]:bg-bg">
+    // A dark broadcast strip in both themes (theme-dark resolves the tokens dark).
+    <header className="sticky top-0 z-40 border-b border-line bg-bg/95 text-fg theme-dark backdrop-blur-md supports-[not(backdrop-filter:blur(1px))]:bg-bg">
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-accent to-transparent opacity-70" />
       <div className="mx-auto flex h-15 max-w-page items-center gap-2 px-4 sm:px-6">
         <Logo />

@@ -8,6 +8,7 @@ export { getDatasetMeta } from "./meta";
 export { getWinModel, listWinModels, type WinModelSummary } from "./models";
 export { getLatestResults, getMatch, listMatches, listMatchYears, listReplayable } from "./matches";
 export { getReplay, getReplayContext } from "./replays";
-export { getLeaders, getPlayerHeader, getPlayerNames, getPlayerProfile, getPlayerSummary, listPlayers } from "./players";
+export { getLeaderCards, getLeaders, getPlayerHeader, getPlayerNames, getPlayerProfile, getPlayerSummary, listPlayers } from "./players";
 export { getHeadToHead, getTeam, getTeamLabels, listTeams } from "./teams";
+export type { LeaderCard } from "./players";
 export { buildMatchupPlan, buildPlayerDossier } from "./strategy";

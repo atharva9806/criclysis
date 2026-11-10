@@ -212,6 +212,7 @@ def index_entry(player: dict, per_format: dict[str, dict]) -> dict:
         "cricinfoId": meta["cricinfoId"],
         "sampleBalls": player["sampleBalls"],
         "formats": formats,
+        **({"photo": meta["photo"]} if "photo" in meta else {}),
     }
 
 
@@ -235,12 +236,14 @@ def cohorts_by_key(aggregators: dict) -> dict[str, Cohort]:
 
 
 def export_players(aggregators: dict, metadata: dict, out_dir: Path,
-                   *, pretty: bool = False) -> dict:
+                   *, pretty: bool = False, photos: dict[str, dict] | None = None) -> dict:
     """Write players/, players.json and cohorts.json.
 
-    ``aggregators`` is keyed by formatKey. Returns the index rows and the slug
-    of every exported player, keyed by person id.
+    ``aggregators`` is keyed by formatKey. ``photos`` maps person ids to the
+    optional photo (``photos.resolve_photos``). Returns the index rows and the
+    slug of every exported player, keyed by person id.
     """
+    photos = photos or {}
     players_dir = out_dir / "players"
     players_dir.mkdir(parents=True, exist_ok=True)
     for stale in players_dir.glob("*.json"):
@@ -295,6 +298,8 @@ def export_players(aggregators: dict, metadata: dict, out_dir: Path,
             "lastPlayed": max(ends) if ends else "",
             "gender": gender,
         }
+        if player_id in photos:
+            meta["photo"] = photos[player_id]
         slug = slugify(name, player_id)
         slugs[player_id] = slug
         player = {

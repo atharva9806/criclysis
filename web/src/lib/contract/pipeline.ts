@@ -243,6 +243,24 @@ export type FormatPayload = {
   };
 };
 
+/**
+ * A freely licensed photo from Wikimedia Commons, found through Wikidata
+ * (pipeline/photos.py). Only CC0, public domain, CC BY, CC BY-SA and GODL-India files;
+ * the credit "Photo: {author}, {license}" must be shown with the image.
+ */
+export type PlayerPhoto = {
+  /** A 480px-wide thumbnail: https://upload.wikimedia.org/... or https://thumb.wikimedia.org/wikipedia/commons/..., or commons.wikimedia.org /w/thumb.php or /wiki/Special:FilePath/...?width=480. */
+  thumbUrl: string;
+  /** The file's description page on commons.wikimedia.org. */
+  pageUrl: string;
+  /** Commons' Artist field as plain text; "Unknown author" when empty. */
+  author: string;
+  /** Commons' LicenseShortName, e.g. "CC BY-SA 4.0" or "Public domain". */
+  license: string;
+  /** null when Commons gives no licence page (public domain, usually). */
+  licenseUrl: string | null;
+};
+
 export type PlayerFile = {
   id: PersonId;
   slug: string;
@@ -261,6 +279,7 @@ export type PlayerFile = {
     debut: string;
     lastPlayed: string;
     gender?: Gender;
+    photo?: PlayerPhoto; // optional enrichment, absent when there is none
   };
   formats: Partial<Record<Fmt, FormatPayload>>;
 };
@@ -283,6 +302,7 @@ export type PlayersIndexRow = {
   lastPlayed: string;
   cricinfoId: string;
   sampleBalls?: number;
+  photo?: PlayerPhoto; // the same object as the player file's meta.photo
   formats: Partial<
     Record<
       Fmt,

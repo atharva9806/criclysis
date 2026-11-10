@@ -18,6 +18,7 @@ export function PageHeader({
   actions,
   back,
   credit = true,
+  media,
 }: {
   eyebrow?: ReactNode;
   title: ReactNode;
@@ -28,7 +29,18 @@ export function PageHeader({
   /** A link back up the hierarchy. */
   back?: { href: string; label: string };
   credit?: boolean;
+  /** Shown beside the title block, e.g. a player's photo. */
+  media?: ReactNode;
 }) {
+  const heading = (
+    <>
+      {eyebrow ? <p className="eyebrow mb-2">{eyebrow}</p> : null}
+      <h1 className="text-title text-balance">{title}</h1>
+      {sub ? <div className="mt-3 text-base leading-relaxed text-muted">{sub}</div> : null}
+      {children}
+      {credit ? <DataCredit className="mt-3" /> : null}
+    </>
+  );
   return (
     <header className="mb-8">
       {back ? (
@@ -37,13 +49,14 @@ export function PageHeader({
         </Link>
       ) : null}
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="min-w-0 max-w-3xl">
-          {eyebrow ? <p className="eyebrow mb-2">{eyebrow}</p> : null}
-          <h1 className="text-title text-balance">{title}</h1>
-          {sub ? <div className="mt-3 text-base leading-relaxed text-muted">{sub}</div> : null}
-          {children}
-          {credit ? <DataCredit className="mt-3" /> : null}
-        </div>
+        {media ? (
+          <div className="flex min-w-0 max-w-3xl items-start gap-4 sm:gap-6">
+            {media}
+            <div className="min-w-0">{heading}</div>
+          </div>
+        ) : (
+          <div className="min-w-0 max-w-3xl">{heading}</div>
+        )}
         {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
     </header>

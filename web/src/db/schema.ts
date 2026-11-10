@@ -64,6 +64,13 @@ export const players = pgTable(
     debut: date("debut", { mode: "string" }),
     lastPlayed: date("last_played", { mode: "string" }),
     sampleBalls: integer("sample_balls").notNull(),
+    // Optional photo from Wikimedia Commons (§1.4 PlayerPhoto); all null when
+    // there is none, and thumb, page, author and licence together otherwise.
+    photoThumbUrl: text("photo_thumb_url"),
+    photoPageUrl: text("photo_page_url"),
+    photoAuthor: text("photo_author"),
+    photoLicense: text("photo_license"),
+    photoLicenseUrl: text("photo_license_url"),
     // Reserved and unpopulated; never rendered.
     overallRating: real("overall_rating"),
     formIndex: real("form_index"),

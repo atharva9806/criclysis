@@ -16,7 +16,7 @@ import type {
   TraitRow,
   YearRow,
 } from "@/lib/contract/db";
-import { FORMAT_KEYS, formatKey as toFormatKey, type Fmt, type FormatKey, type Gender } from "@/lib/contract/pipeline";
+import { FORMAT_KEYS, formatKey as toFormatKey, type Fmt, type FormatKey, type Gender, type PlayerPhoto } from "@/lib/contract/pipeline";
 import { batRates, bowlRates, toSplitRow } from "@/lib/metrics";
 import { cached } from "./cache";
 import { getDatasetMeta } from "./meta";
@@ -24,6 +24,26 @@ import { fmtOfKey, formatKeysFor, toTraitRow } from "./rows";
 
 type PlayerDbRow = typeof players.$inferSelect;
 type CareerDbRow = typeof careerStats.$inferSelect;
+
+type PhotoColumns = {
+  photoThumbUrl: string | null;
+  photoPageUrl: string | null;
+  photoAuthor: string | null;
+  photoLicense: string | null;
+  photoLicenseUrl: string | null;
+};
+
+/** The photo_* columns as a PlayerPhoto, or null unless the image, its page and the credit are all there. */
+export function toPlayerPhoto(p: PhotoColumns): PlayerPhoto | null {
+  if (!p.photoThumbUrl || !p.photoPageUrl || !p.photoLicense) return null;
+  return {
+    thumbUrl: p.photoThumbUrl,
+    pageUrl: p.photoPageUrl,
+    author: p.photoAuthor || "Unknown author",
+    license: p.photoLicense,
+    licenseUrl: p.photoLicenseUrl,
+  };
+}
 
 export function toPlayerHeader(p: PlayerDbRow): PlayerHeader {
   return {
@@ -42,6 +62,7 @@ export function toPlayerHeader(p: PlayerDbRow): PlayerHeader {
     debut: p.debut,
     lastPlayed: p.lastPlayed,
     sampleBalls: p.sampleBalls,
+    photo: toPlayerPhoto(p),
   };
 }
 
@@ -338,7 +359,8 @@ async function loadPlayers(q: ListQuery = {}): Promise<ListResult> {
   const [res, countRes] = await Promise.all([
     db.execute<Record<string, unknown>>(sql`
       ${filtered}
-      SELECT p.slug, p.name, p.gender, p.country, p.teams, p.role, p.last_played, r.* ${from}
+      SELECT p.slug, p.name, p.gender, p.country, p.teams, p.role, p.last_played,
+        p.photo_thumb_url, p.photo_page_url, p.photo_author, p.photo_license, p.photo_license_url, r.* ${from}
       ORDER BY ${order[sort]}, p.name ASC, p.id ASC
       LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
     db.execute<{ total: number }>(sql`${filtered} SELECT count(*)::int AS total ${from}`),
@@ -352,6 +374,13 @@ async function loadPlayers(q: ListQuery = {}): Promise<ListResult> {
     teams: (r.teams as string[]) ?? [],
     role: (r.role as string | null) ?? null,
     lastPlayed: (r.last_played as string | null) ?? null,
+    photo: toPlayerPhoto({
+      photoThumbUrl: r.photo_thumb_url as string | null,
+      photoPageUrl: r.photo_page_url as string | null,
+      photoAuthor: r.photo_author as string | null,
+      photoLicense: r.photo_license as string | null,
+      photoLicenseUrl: r.photo_license_url as string | null,
+    }),
     formatKeys: r.fks as FormatKey[],
     matches: r.matches as number | null,
     batInnings: r.bat_innings as number | null,

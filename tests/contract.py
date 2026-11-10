@@ -273,11 +273,18 @@ FORMAT_PAYLOAD = Obj({
     "profile": Map(PROFILE_AXIS),
     "batting?": BATTING, "bowling?": BOWLING,
 })
+# Optional: a freely licensed image from Wikimedia Commons (pipeline/photos.py).
+PHOTO = Obj({
+    "thumbUrl": Str(r"https://(upload\.wikimedia\.org/|thumb\.wikimedia\.org/wikipedia/commons/|commons\.wikimedia\.org/(w/thumb\.php|wiki/Special:FilePath/))\S*"),
+    "pageUrl": Str(r"https://commons\.wikimedia\.org/\S+"),
+    "author": Str(r".*\S.*"), "license": Str(r".*\S.*"),
+    "licenseUrl": Null(Str(r"https?://\S+")),
+})
 PLAYER_META = Obj({
     "bowlingType": Str(), "battingHand": Str(), "role": Str(), "country": Str(),
     "cricinfoId": Str(), "fullName": Str(), "born": Str(), "teams": Arr(Str()),
     "teamIds": Arr(Str(TEAM_ID)), "debut": Str(f"({DATE})?"), "lastPlayed": Str(f"({DATE})?"),
-    "gender": GENDER,
+    "gender": GENDER, "photo?": PHOTO,
 })
 PLAYER_FILE = Obj({
     "id": Str(PERSON_ID), "slug": Str(), "name": Str(), "gender": GENDER, "meta": PLAYER_META,
@@ -288,7 +295,7 @@ PLAYERS_INDEX = Obj({"players": Arr(Obj({
     "teams": Arr(Str()), "teamIds": Arr(Str(TEAM_ID)), "country": Str(), "role": Str(),
     "battingHand": Str(), "bowlingType": Str(), "bowlingLabel": Str(), "born": Str(),
     "debut": Str(f"({DATE})?"), "lastPlayed": Str(f"({DATE})?"), "cricinfoId": Str(),
-    "sampleBalls": Int(),
+    "sampleBalls": Int(), "photo?": PHOTO,
     "formats": Map(Obj({
         "matches": Int(),
         "bat?": Obj({"inns": Int(), "runs": Int(), "balls": Int(), "avg": NNUM, "sr": NUM,
@@ -514,6 +521,8 @@ def validate_dir(root: Path, *, replays: bool = True, winprob: bool = True) -> l
         errors += check(PLAYER_FILE, payload, f"players/{row['slug']}")
         if payload.get("id") != row["id"] or payload.get("gender") != row["gender"]:
             errors.append(f"players/{row['slug']}: id or gender differs from the index")
+        if payload.get("meta", {}).get("photo") != row.get("photo"):
+            errors.append(f"players/{row['slug']}: meta.photo differs from the index")
         g = "w" if row["gender"] == "female" else "m"
         for fmt, fp in payload.get("formats", {}).items():
             if fp.get("formatKey") != f"{fmt}-{g}":

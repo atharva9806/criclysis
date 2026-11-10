@@ -136,7 +136,7 @@ Then:
 | 3 | Fetch the Cricsheet archives | `python -m pipeline fetch --refresh --no-mirror --formats test odi t20i`: three zips plus the people register, from cricsheet.org only | never |
 | 4 | Fingerprint the archives | `python -m pipeline fingerprint`: a checksum of the downloaded files | never |
 | 5 | Compare with the last import | `npm run check-fingerprint`: prints `changed` or `unchanged` against the last complete import | import is off, force is on, or no `DATABASE_URL` |
-| 6 | Build men's and women's data | `python -m pipeline build --genders male female` | the files are unchanged |
+| 6 | Build men's and women's data | `python -m pipeline build --genders male female --photos`, between restoring and saving the weekly player-photo cache (`.cache/photos`). Photo counts and any Wikidata or Commons failure go to the run summary; a photo outage never fails the step | the files are unchanged |
 | 7 | Fit the win-probability models | `python -m pipeline winprob --genders male female` | unchanged |
 | 8 | Export replays | `python -m pipeline replays --all --genders male female` | unchanged |
 | 9 | **Check the replays against the build** | `python -m pipeline verify-replays --data data/out` | unchanged |
@@ -440,7 +440,7 @@ npm run test:replays  # replay engine vs the fixture's matches and player files
 ```bash
 python -m pipeline --help
 python -m pipeline fetch --formats test odi t20i
-python -m pipeline build --genders male female
+python -m pipeline build --genders male female   # add --photos for Wikimedia photos (needs query.wikidata.org and commons.wikimedia.org)
 python -m pipeline winprob --genders male female
 python -m pipeline replays --all --genders male female
 python -m pipeline verify-replays --data data/out

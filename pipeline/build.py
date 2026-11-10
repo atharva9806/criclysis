@@ -148,15 +148,21 @@ class Builder:
                         "exported: %s.", pid, "; and ".join(parts), outcome)
 
     # ------------------------------------------------------------------
+    def person_ids(self) -> set[str]:
+        """The players export will write: a batting or bowling record in some format."""
+        return {pid for agg in self.aggregators.values() for pid, r in agg.players.items()
+                if r.has_batting() or r.has_bowling()}
+
     def write(self, out_dir: Path, *, metadata: dict, provenance: dict, fingerprint_payload: dict,
-              generated: str, build_id: str, pretty: bool = False) -> dict:
+              generated: str, build_id: str, pretty: bool = False,
+              photos: dict[str, dict] | None = None) -> dict:
         out_dir.mkdir(parents=True, exist_ok=True)
         self.aggregators = {fk: self.aggregators[fk] for fk in FORMAT_KEYS
                             if fk in self.aggregators}
         for agg in self.aggregators.values():
             agg.finalise()
 
-        players = export_players(self.aggregators, metadata, out_dir, pretty=pretty)
+        players = export_players(self.aggregators, metadata, out_dir, pretty=pretty, photos=photos)
         self._warn_dual_gender(players["index"])
 
         ranks = featured_ranks((row["id"], row["startDate"], row["event"]) for row in self.matches)
@@ -238,11 +244,14 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
                   limit_matches: int | None = None, only_ids: set[str] | None = None,
                   corpus=None, extra_sources: list[dict] | None = None,
                   sha: str | None = None, pretty: bool = False,
-                  register: dict[str, str] | None = None) -> dict:
+                  register: dict[str, str] | None = None, photos: bool = False) -> dict:
     """Build every players/matches/teams/venues file into ``out_dir``.
 
     ``register`` maps ESPNcricinfo ids to Cricsheet ids; by default it is
     Cricsheet's people register if `fetch` downloaded it, else empty.
+    ``photos`` adds player photos from Wikimedia Commons (``photos.py``), the
+    build's only network access; it falls back to the cache, or to none, and
+    never fails the build.
     """
     started = time.time()
     paths = archive_paths(formats, archives)
@@ -275,6 +284,18 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
             if count % 1000 == 0:
                 log.info("  %s: %d matches", fmt, count)
 
+    photo_map: dict[str, dict] = {}
+    photo_sources: list[dict] = []
+    if photos:
+        from .photos import photos_for_build
+        photo_map, _photo_stats = photos_for_build(builder.person_ids(), register)
+        photo_sources = [{
+            "id": "wikimedia", "used": bool(photo_map),
+            "note": f"Photos of {len(photo_map)} players from Wikimedia Commons, found through "
+                    "Wikidata's ESPNcricinfo player id (P2697) and Cricsheet's people register; "
+                    "only CC0, public domain, CC BY, CC BY-SA and GODL-India images, each credited with its "
+                    "author and licence"}]
+
     provenance = {
         "sources": [
             {"id": "cricsheet", "used": True,
@@ -285,6 +306,7 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
                      + (" through Cricsheet's people register" if register else "")
                      + ", or by name only where the name is unique, on one row, "
                        "and the row's country is a team the player played for"},
+            *photo_sources,
             *(extra_sources or []),
         ],
         "enrichment": stats,
@@ -300,7 +322,7 @@ def build_dataset(out_dir: Path, *, formats=tuple(FORMATS), genders=tuple(GENDER
     build_id = f"{generated}-{sha or git_sha7()}"
     summary = builder.write(out_dir, metadata=metadata, provenance=provenance,
                             fingerprint_payload=fp, generated=generated,
-                            build_id=build_id, pretty=pretty)
+                            build_id=build_id, pretty=pretty, photos=photo_map)
     for agg in builder.aggregators.values():
         log.info("  %s", agg.summary())
     log.info("wrote %s to %s in %.1fs", summary, out_dir, time.time() - started)

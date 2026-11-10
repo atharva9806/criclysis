@@ -80,6 +80,47 @@ describe("mapPlayer", () => {
     expect(row.sample_balls).toBe(7);
     expect(row.team_ids).toEqual(["india-m"]);
   });
+
+  const photo = {
+    thumbUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Virat_Kohli.jpg/480px-Virat_Kohli.jpg",
+    pageUrl: "https://commons.wikimedia.org/wiki/File:Virat_Kohli.jpg",
+    author: "Jane Doe",
+    license: "CC BY-SA 4.0",
+    licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0",
+  };
+  const withPhoto = (p, where = "meta") =>
+    where === "meta" ? mapPlayer({ ...kohli, meta: { ...kohli.meta, photo: p } }, kohliIndex) : mapPlayer(kohli, { ...kohliIndex, photo: p });
+
+  it("maps the photo to the photo_* columns, from meta or the index row", () => {
+    const expected = {
+      photo_thumb_url: photo.thumbUrl,
+      photo_page_url: photo.pageUrl,
+      photo_author: "Jane Doe",
+      photo_license: "CC BY-SA 4.0",
+      photo_license_url: photo.licenseUrl,
+    };
+    expect(withPhoto(photo)).toMatchObject(expected);
+    expect(withPhoto(photo, "index")).toMatchObject(expected);
+    expect(withPhoto({ ...photo, license: "Public domain", licenseUrl: null }).photo_license_url).toBeNull();
+  });
+
+  it("leaves the photo columns out, and the hash as before, when there is no photo", () => {
+    const row = mapPlayer(kohli, kohliIndex);
+    expect(Object.keys(row).filter((k) => k.startsWith("photo_"))).toEqual([]);
+    const { content_hash, ...rest } = row;
+    expect(content_hash).toBe(sha1(rest));
+    expect(withPhoto(undefined).content_hash).toBe(content_hash);
+    expect(withPhoto({ ...photo, thumbUrl: "" }).content_hash).toBe(content_hash);
+  });
+
+  it("changes the hash when the photo or its credit changes, so the upsert rewrites the row", () => {
+    const none = mapPlayer(kohli, kohliIndex).content_hash;
+    const a = withPhoto(photo).content_hash;
+    const b = withPhoto({ ...photo, author: "John Roe" }).content_hash;
+    const c = withPhoto({ ...photo, license: "CC BY 2.0" }).content_hash;
+    expect(new Set([none, a, b, c]).size).toBe(4);
+    expect(withPhoto(structuredClone(photo)).content_hash).toBe(a);
+  });
 });
 
 describe("mapPlayerFormat", () => {

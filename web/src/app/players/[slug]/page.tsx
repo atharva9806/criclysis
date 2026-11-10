@@ -12,6 +12,7 @@ import { FormatTabs, Muted, PageHeader, Section, SplitTable, TableWrap, genderHr
 import { ChartFrame, PercentileRadar, YearBars } from "@/components/charts/Charts";
 import { ordinal } from "@/components/numbers";
 import { SectionSkeleton, TableSkeleton } from "@/components/Loading";
+import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Stat, StatGrid } from "@/components/ui";
 
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<SearchParams> };
@@ -525,8 +526,9 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   const fk = pickFormatKey(player.gender, careers, fmtParam(sp.f));
   const fmt = fk ? fmtOfKey(fk) : null;
   const coverage = fk ? meta?.formats[fk]?.firstDate : undefined;
+  const team = player.teams.join(", ") || player.country;
   const facts = [
-    player.teams.join(", ") || player.country,
+    team,
     player.role,
     player.battingHand ? `${capitalise(player.battingHand)}-hand bat` : null,
     player.bowlingType ? (meta?.bowlingTypes[player.bowlingType]?.label ?? player.bowlingType) : null,
@@ -538,6 +540,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
         back={{ href: genderHref("/players", player.gender), label: "All players" }}
         eyebrow={`${genderWord(player.gender)}'s cricket`}
         title={player.name}
+        media={<PlayerPhoto photo={player.photo} name={player.name} team={team} size="lg" />}
         sub={
           <>
             {player.fullName && player.fullName !== player.name ? <span className="block text-fg">{player.fullName}</span> : null}

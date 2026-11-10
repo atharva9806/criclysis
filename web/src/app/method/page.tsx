@@ -210,6 +210,19 @@ export default async function MethodPage() {
               </>
             ) : null}
           </p>
+          <p>
+            <strong>Photo credits.</strong> Player photos are not Cricsheet data. They come from{" "}
+            <a href="https://commons.wikimedia.org" className="link">
+              Wikimedia Commons
+            </a>
+            , matched by id: Cricsheet&apos;s people register gives each player&apos;s ESPNcricinfo id, and{" "}
+            <a href="https://www.wikidata.org" className="link">
+              Wikidata
+            </a>{" "}
+            links that id to the player&apos;s image. Only images released under CC0, into the public domain, or under CC BY, CC BY-SA or the Government Open Data Licence – India are used, and each
+            is shown with its author and licence, linked to the file&apos;s page on Commons. An id that leads to more than one Wikidata entry gets no photo
+            rather than a guessed one, and a player without a usable image is shown with their initials.
+          </p>
         </Prose>
 
         <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_1fr]">

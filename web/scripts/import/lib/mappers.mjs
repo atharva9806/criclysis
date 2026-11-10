@@ -15,6 +15,23 @@ function hashed(row) {
 // ------------------------------------------------------------------ players
 
 /**
+ * photo_* columns from the optional PlayerPhoto (§1.4), or {} when there is
+ * none. Left out rather than set to null, so a player without a photo keeps
+ * the content_hash it had before photos existed and is not rewritten; the
+ * upsert sends missing columns as null.
+ */
+export function photoColumns(photo) {
+  if (!photo?.thumbUrl || !photo.pageUrl) return {};
+  return {
+    photo_thumb_url: photo.thumbUrl,
+    photo_page_url: photo.pageUrl,
+    photo_author: photo.author || "Unknown author",
+    photo_license: photo.license,
+    photo_license_url: photo.licenseUrl || null,
+  };
+}
+
+/**
  * players row from players/<slug>.json (.meta first) and its players.json
  * entry. `sampleBalls` is NEW in v2; for v1 it is the same definition (balls
  * faced plus bowled, all formats) summed from the pipeline's own totals.
@@ -42,6 +59,7 @@ export function mapPlayer(file, indexRow) {
     debut: orNull(meta.debut ?? indexRow?.debut),
     last_played: orNull(meta.lastPlayed ?? indexRow?.lastPlayed),
     sample_balls: sampleBalls,
+    ...photoColumns(meta.photo ?? indexRow?.photo),
   });
 }
 

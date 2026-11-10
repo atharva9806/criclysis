@@ -54,6 +54,23 @@ describe("PlayerPhoto", () => {
   });
 });
 
+describe("PlayerPhoto compact credit", () => {
+  it("keeps a visible credit link whose name is the full credit", () => {
+    const html = renderToStaticMarkup(<PlayerPhoto photo={photo} name="V Kohli" credit="compact" />);
+    expect(html).toContain("<figcaption");
+    expect(html).toContain(`href="${photo.pageUrl}"`);
+    expect(html).toContain(">©<");
+    // The link's accessible name (visible symbol plus screen-reader text) carries author and licence.
+    expect(text(html)).toContain("Photo: Jane Doe, CC BY-SA 4.0 (Wikimedia Commons)");
+  });
+
+  it("draws an avatar in the given colours without a photo", () => {
+    const html = renderToStaticMarkup(<PlayerPhoto name="V Kohli" credit="compact" avatar={{ background: "#1d4fa3", color: "#ffffff" }} />);
+    expect(html).not.toContain("<img");
+    expect(html).toContain("background:#1d4fa3");
+  });
+});
+
 describe("initials", () => {
   it("takes the first and last words", () => {
     expect(initials("V Kohli")).toBe("VK");

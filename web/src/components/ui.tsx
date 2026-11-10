@@ -4,7 +4,7 @@
  * classes they use are defined in app/globals.css.
  */
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export function Card({ children, className = "", as: As = "div" }: { children: ReactNode; className?: string; as?: "div" | "section" | "article" | "li" }) {
   return <As className={`card ${className}`}>{children}</As>;
@@ -24,25 +24,30 @@ export function Badge({ tone = "neutral", children, className = "" }: { tone?: T
 }
 
 /**
- * One headline number. `sample` states what it rests on ("from 1,204 balls"),
- * so a statistic never appears without its sample size.
+ * One headline number in the scoreboard face. `sample` states what it rests
+ * on ("from 1,204 balls"), so a statistic never appears without its sample
+ * size.
  */
 export function Stat({ label, value, unit, sample, className = "" }: { label: ReactNode; value: ReactNode; unit?: ReactNode; sample?: ReactNode; className?: string }) {
   return (
     <div className={`min-w-0 ${className}`}>
       <dt className="label">{label}</dt>
-      <dd className="mt-1">
-        <span className="text-stat tabular-nums">{value}</span>
-        {unit ? <span className="ml-1 text-sm text-muted">{unit}</span> : null}
-        {sample ? <span className="mt-0.5 block text-xs text-muted">{sample}</span> : null}
+      <dd className="mt-1.5">
+        <span className="score text-stat">{value}</span>
+        {unit ? <span className="ml-1.5 text-sm text-muted">{unit}</span> : null}
+        {sample ? <span className="mt-1.5 block text-xs leading-snug text-muted">{sample}</span> : null}
       </dd>
     </div>
   );
 }
 
-/** A grid of Stats inside one card. */
-export function StatGrid({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <dl className={`card grid grid-cols-2 gap-x-6 gap-y-5 p-5 sm:grid-cols-3 lg:grid-cols-4 ${className}`}>{children}</dl>;
+/** Stats as a row of scoreboard tiles; each child Stat becomes a tile with an accent top edge (--tile-accent). */
+export function StatGrid({ children, className = "", accent }: { children: ReactNode; className?: string; accent?: string }) {
+  return (
+    <dl className={`tiles grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 ${className}`} style={accent ? ({ "--tile-accent": accent } as CSSProperties) : undefined}>
+      {children}
+    </dl>
+  );
 }
 
 /** A section heading with an optional description and actions (filters, toggles) on the right. */
@@ -62,7 +67,7 @@ export function SectionHeader({
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div className="min-w-0 max-w-3xl">
-        <H id={id} className={H === "h2" ? "text-heading" : "text-base font-semibold"}>
+        <H id={id} className={H === "h2" ? "section-title" : "font-display text-xl font-bold uppercase tracking-[0.02em]"}>
           {title}
         </H>
         {sub ? <div className="mt-1 text-sm leading-relaxed text-muted">{sub}</div> : null}
@@ -93,7 +98,7 @@ export function EmptyState({ title, children, action, className = "" }: { title:
         <circle cx="12" cy="12" r="9" />
         <path d="M8 12h8" />
       </svg>
-      <p className="mt-3 font-semibold">{title}</p>
+      <p className="mt-3 font-display text-lg font-bold uppercase tracking-[0.03em]">{title}</p>
       {children ? <div className="mx-auto mt-1.5 max-w-prose text-sm leading-relaxed text-muted">{children}</div> : null}
       {action ? <div className="mt-4 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>

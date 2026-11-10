@@ -2,15 +2,13 @@
 
 import { useSyncExternalStore } from "react";
 
-/** localStorage key for an explicit light or dark choice. No key means "follow the system". */
+/** localStorage key for an explicit light or dark choice. No key means the default, dark. */
 export const THEME_KEY = "criclysis-theme";
 const EVENT = "criclysis-theme";
-const DARK_QUERY = "(prefers-color-scheme: dark)";
 
 type Theme = "light" | "dark";
 
 function subscribe(onChange: () => void) {
-  const mq = window.matchMedia(DARK_QUERY);
   // Another tab changed the choice: apply it here too.
   const onStorage = (e: StorageEvent) => {
     if (e.key !== THEME_KEY) return;
@@ -18,25 +16,21 @@ function subscribe(onChange: () => void) {
     else delete document.documentElement.dataset.theme;
     onChange();
   };
-  mq.addEventListener("change", onChange);
   window.addEventListener(EVENT, onChange);
   window.addEventListener("storage", onStorage);
   return () => {
-    mq.removeEventListener("change", onChange);
     window.removeEventListener(EVENT, onChange);
     window.removeEventListener("storage", onStorage);
   };
 }
 
 function current(): Theme {
-  const t = document.documentElement.dataset.theme;
-  if (t === "light" || t === "dark") return t;
-  return window.matchMedia(DARK_QUERY).matches ? "dark" : "light";
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
 /**
- * Switches between light and dark and remembers the choice. Until the user
- * picks one, the page follows prefers-color-scheme (the CSS tokens use
+ * Switches between light and dark and remembers the choice. Dark is the
+ * default (app/globals.css sets color-scheme: dark and the tokens use
  * light-dark()), so the server never needs to know the theme.
  */
 export function ThemeToggle() {

@@ -3,11 +3,12 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { MatchRow, SplitRow } from "@/lib/contract/db";
 import type { Fmt, Gender, Record5 } from "@/lib/contract/pipeline";
-import { DASH, FORMAT_LABEL, date, decided, formatKeyLabel, int, num, pct, winPct } from "@/lib/format";
+import { FORMAT_LABEL, date, decided, formatKeyLabel, int, num, pct, winPct } from "@/lib/format";
 import { pageNav, qs } from "@/lib/params";
 import { DataCredit } from "./DataCredit";
 import { ScrollRegion } from "./ScrollRegion";
-import { eventLine, teamScores } from "./replay/ResultCard";
+import { eventLine } from "./replay/ResultCard";
+import { ScoreRows } from "./broadcast/ScoreRows";
 import { Badge, EmptyState, SectionHeader, SegmentedLinks } from "./ui";
 
 export function PageHeader({
@@ -34,7 +35,7 @@ export function PageHeader({
 }) {
   const heading = (
     <>
-      {eyebrow ? <p className="eyebrow mb-2">{eyebrow}</p> : null}
+      {eyebrow ? <p className="eyebrow mb-3">{eyebrow}</p> : null}
       <h1 className="text-title text-balance">{title}</h1>
       {sub ? <div className="mt-3 text-base leading-relaxed text-muted">{sub}</div> : null}
       {children}
@@ -44,7 +45,7 @@ export function PageHeader({
   return (
     <header className="mb-8">
       {back ? (
-        <Link href={back.href} className="-ml-1 mb-3 inline-flex min-h-9 items-center gap-1 rounded-control px-1 text-sm font-medium text-muted hover:text-fg">
+        <Link href={back.href} className="-ml-1 mb-3 inline-flex min-h-10 items-center gap-1.5 rounded-control px-1 font-display text-sm font-semibold uppercase tracking-[0.06em] text-muted hover:text-fg">
           <span aria-hidden="true">←</span> {back.label}
         </Link>
       ) : null}
@@ -138,7 +139,7 @@ export function Muted({ children }: { children: ReactNode }) {
   return <p className="rounded-card border border-dashed border-line-strong bg-surface px-5 py-4 text-sm leading-relaxed text-muted">{children}</p>;
 }
 
-/** One result: teams, innings totals in batting order, the official result text, date, event and venue. */
+/** One result as a scoreboard card: both sides with flags and totals in batting order, the official result, date, event and venue. */
 export function MatchCard({ m }: { m: MatchRow }) {
   const event = eventLine(m);
   const name = `${m.team1} v ${m.team2}, ${date(m.endDate)}`;
@@ -150,21 +151,10 @@ export function MatchCard({ m }: { m: MatchRow }) {
         </p>
         {m.eventStage === "Final" ? <Badge tone="accent">Final</Badge> : null}
       </div>
-      <h3 className="mt-3 space-y-1.5">
-        {teamScores(m).map((t) => {
-          const won = m.result.winner === t.team;
-          return (
-            <span key={t.team} className="flex items-baseline justify-between gap-3">
-              <span className={`min-w-0 truncate ${won ? "font-semibold text-fg" : "font-medium text-muted"}`}>
-                {t.team}
-                {won ? <span className="sr-only"> (won)</span> : null}
-              </span>
-              <span className={`shrink-0 text-right text-sm tabular-nums ${won ? "font-semibold" : ""}`}>{t.score || DASH}</span>
-            </span>
-          );
-        })}
+      <h3 className="mt-3">
+        <ScoreRows m={m} />
       </h3>
-      <p className="mt-3 text-sm font-medium">{m.result.text || "Result not recorded"}</p>
+      <p className="mt-3 text-sm font-semibold">{m.result.text || "Result not recorded"}</p>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{[event || m.season, m.venue].filter(Boolean).join(" · ")}</p>
       <p className="-mx-2 mt-auto flex flex-wrap gap-1 pt-3">
         <Link href={`/matches/${m.id}`} className="btn-ghost px-2">
@@ -180,24 +170,32 @@ export function MatchCard({ m }: { m: MatchRow }) {
   );
 }
 
-/** A whole-card link into a replay. */
+/** A whole-card link into a replay, drawn as a broadcast scoreboard. */
 export function ReplayCard({ m }: { m: MatchRow }) {
   const event = eventLine(m);
   return (
-    <Link href={`/live/${m.id}`} className="card-link group flex h-full flex-col p-4 sm:p-5">
-      <span className="flex items-start justify-between gap-2">
-        <span className="label">
-          {formatKeyLabel(m.formatKey)} · <time dateTime={m.endDate}>{date(m.endDate)}</time>
-        </span>
+    <Link href={`/live/${m.id}`} className="card-link group flex h-full flex-col overflow-hidden">
+      <span className="flex items-center justify-between gap-2 border-b border-line bg-surface-2 px-4 py-2 sm:px-5">
+        <span className="label min-w-0 truncate">{event || formatKeyLabel(m.formatKey)}</span>
         {m.eventStage === "Final" ? <Badge tone="accent">Final</Badge> : null}
       </span>
-      <span className="mt-3 block font-semibold">
-        {m.team1} v {m.team2}
-      </span>
-      {event ? <span className="mt-0.5 block truncate text-xs text-muted">{event}</span> : null}
-      <span className="mt-3 block text-sm text-muted">{m.result.text}</span>
-      <span className="mt-auto inline-flex items-center gap-1 pt-4 text-sm font-semibold text-accent">
-        Replay ball by ball <span aria-hidden="true" className="transition-transform motion-safe:group-hover:translate-x-0.5">→</span>
+      <span className="flex flex-1 flex-col p-4 sm:p-5">
+        <span className="sr-only">
+          {m.team1} v {m.team2}.
+        </span>
+        <ScoreRows m={m} size="lg" />
+        <span className="mt-3 block text-sm font-semibold">{m.result.text}</span>
+        <span className="mt-0.5 block text-xs text-muted">
+          {formatKeyLabel(m.formatKey)} · <time dateTime={m.endDate}>{date(m.endDate)}</time>
+        </span>
+        <span className="mt-auto inline-flex items-center gap-2 pt-4 font-display text-[0.9375rem] font-bold uppercase tracking-[0.06em] text-accent">
+          <span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-full bg-accent text-on-accent transition-transform motion-safe:group-hover:scale-110">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7 4v16l13-8z" />
+            </svg>
+          </span>
+          Replay ball by ball
+        </span>
       </span>
     </Link>
   );

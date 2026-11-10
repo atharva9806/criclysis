@@ -23,10 +23,11 @@ const COLUMNS: { title: string; links: [string, string][] }[] = [
 
 export function Footer() {
   return (
-    <footer className="mt-16 border-t border-line bg-surface">
+    <footer className="relative mt-20 border-t border-line bg-surface">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
       <div className="mx-auto grid grid-cols-1 max-w-page gap-8 px-4 py-10 text-sm sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
         <div className="max-w-md">
-          <p className="font-bold tracking-tight">Criclysis</p>
+          <p className="font-display text-xl font-extrabold uppercase tracking-[0.04em]">Criclysis</p>
           <p className="mt-2 leading-relaxed text-muted">
             International cricket analysis built only from Cricsheet&apos;s public ball-by-ball records. The data is refreshed from Cricsheet&apos;s daily
             files; there is no live-score feed.

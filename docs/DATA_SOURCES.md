@@ -173,6 +173,12 @@ id only:
   `normalized` and `redirects` (renamed files) map its answers back.
   Commons gives a thumbnail URL for only some of the files in each request,
   so files answered without one are asked for again.
+- **Hosts.** A thumbnail is used only from `upload.wikimedia.org`, or from
+  `commons.wikimedia.org` under `/w/thumb.php` or `/wiki/Special:FilePath/`,
+  and a file page only from `commons.wikimedia.org/wiki/File:` (or its
+  mobile host), all as https; anything else is refused, so the site never
+  hotlinks from another host. Without a thumbnail, the original on
+  `upload.wikimedia.org` is scaled with `Special:FilePath/<name>?width=480`.
 - **Credit.** Every photo is shown with "Photo: author, licence", linked to
   the file's Commons page and the licence. The Method page explains the
   source. Nothing comes from Cricbuzz, ESPNcricinfo or photo agencies.

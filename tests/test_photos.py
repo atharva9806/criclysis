@@ -42,17 +42,21 @@ def sparql(claims: list[tuple[str, str, str | None]], formatter: str = FORMATTER
 
 
 def page(name: str, licence: str, artist: str = "Jane Doe",
-         licence_url: str = "https://creativecommons.org/licenses/by-sa/4.0") -> dict:
+         licence_url: str = "https://creativecommons.org/licenses/by-sa/4.0", *,
+         original: bool = True, thumb: str | None = None, description: str | None = None) -> dict:
     slug = urllib.parse.quote(name.replace(" ", "_"))
     meta = {"Artist": {"value": artist}, "LicenseShortName": {"value": licence}}
     if licence_url:
         meta["LicenseUrl"] = {"value": licence_url}
-    return {"ns": 6, "title": f"File:{name}", "imageinfo": [{
-        "thumburl": f"https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/{slug}/480px-{slug}",
+    info = {
+        "thumburl": thumb or f"https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/{slug}/480px-{slug}",
         "thumbwidth": 480,
         "url": f"https://upload.wikimedia.org/wikipedia/commons/a/ab/{slug}",
-        "descriptionurl": f"https://commons.wikimedia.org/wiki/File:{slug}",
-        "extmetadata": meta}]}
+        "descriptionurl": description or f"https://commons.wikimedia.org/wiki/File:{slug}",
+        "extmetadata": meta}
+    if not original:
+        del info["url"]
+    return {"ns": 6, "title": f"File:{name}", "imageinfo": [info]}
 
 
 def mediawiki_title(title: str) -> str:
@@ -272,9 +276,10 @@ class TitleTests(PhotoTestCase):
         self.assertEqual(fake.count(photos.COMMONS_API), 10)
 
     def test_a_file_that_never_gets_a_thumbnail_is_named_in_the_log(self):
+        # No thumbnail and no original to scale: rejected, and named.
         names = [f"P{i}.jpg" for i in range(5)]
         fake = FakeWikimedia([(f"Q{i}", str(i), n) for i, n in enumerate(names)],
-                             {n: page(n, "CC0") for n in names}, thumb_limit=0)
+                             {n: page(n, "CC0", original=False) for n in names}, thumb_limit=0)
         register = {str(i): f"aaaa000{i}" for i in range(5)}
         got, stats = self.resolve(fake, set(register.values()), register)
         self.assertEqual((got, stats["rejected"]), ({}, 5))
@@ -297,9 +302,91 @@ class TitleTests(PhotoTestCase):
         self.assertEqual(photos.to_photo(infos["Gone.jpg"]), (None, photos.MISSING))
         self.assertEqual(photos.to_photo(infos["Bad<name>.jpg"]), (None, photos.INVALID))
         self.assertIsNotNone(photos.to_photo(infos["Fine.jpg"])[0])
-        info = dict(infos["Fine.jpg"], thumbUrl="")
+        info = dict(infos["Fine.jpg"], thumbUrl="", url="")
         self.assertEqual(photos.to_photo(info), (None, photos.NO_THUMB))
         self.assertEqual(photos.to_photo(dict(info, license="")), (None, photos.NO_LICENCE))
+
+
+class UrlShapeTests(PhotoTestCase):
+    """Every thumbnail and page URL shape that is still Wikimedia (run 42774182351)."""
+
+    def photo(self, **urls):
+        info = photos.parse_imageinfo({"query": {"pages": [page("Phillip Hughes.JPG", "CC BY-SA 3.0")]}})
+        return photos.to_photo({**info["Phillip Hughes.JPG"], **urls})
+
+    def test_thumbnail_shapes(self):
+        accepted = {
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Phillip_Hughes.JPG/480px-Phillip_Hughes.JPG":
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Phillip_Hughes.JPG/480px-Phillip_Hughes.JPG",
+            "//upload.wikimedia.org/wikipedia/commons/thumb/7/7e/P.JPG/480px-P.JPG":
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/P.JPG/480px-P.JPG",
+            "http://upload.wikimedia.org/wikipedia/commons/7/7e/P.JPG":
+                "https://upload.wikimedia.org/wikipedia/commons/7/7e/P.JPG",
+            "https://commons.wikimedia.org/w/thumb.php?f=Phillip_Hughes.JPG&w=480":
+                "https://commons.wikimedia.org/w/thumb.php?f=Phillip_Hughes.JPG&w=480",
+            "//commons.wikimedia.org/w/thumb.php?f=P.JPG&width=480":
+                "https://commons.wikimedia.org/w/thumb.php?f=P.JPG&width=480",
+            "http://commons.wikimedia.org/wiki/Special:FilePath/Phillip_Hughes.JPG?width=480":
+                "https://commons.wikimedia.org/wiki/Special:FilePath/Phillip_Hughes.JPG?width=480",
+        }
+        for given, expected in accepted.items():
+            photo, why = self.photo(thumbUrl=given)
+            self.assertIsNone(why, given)
+            self.assertEqual(photo["thumbUrl"], expected)
+            self.assertEqual(check(PHOTO, photo, "photo"), [], given)
+        for given in ("https://example.org/Phillip_Hughes.JPG",
+                      "https://upload.wikimedia.org.example.org/x.jpg",
+                      "https://commons.wikimedia.org/wiki/File:Phillip_Hughes.JPG",
+                      "https://commons.wikimedia.org/w/index.php?title=Special:FilePath/X.jpg",
+                      "https://en.wikipedia.org/w/thumb.php?f=X.jpg&w=480",
+                      "/wikipedia/commons/thumb/7/7e/P.JPG/480px-P.JPG",
+                      "ftp://upload.wikimedia.org/x.jpg"):
+            self.assertEqual(self.photo(thumbUrl=given), (None, photos.NOT_WIKIMEDIA), given)
+
+    def test_page_shapes(self):
+        for given, expected in {
+            "https://commons.wikimedia.org/wiki/File:Phillip_Hughes.JPG":
+                "https://commons.wikimedia.org/wiki/File:Phillip_Hughes.JPG",
+            "//commons.wikimedia.org/wiki/File:Kirstie_Gordon,_2019_Ashes_Test.jpg":
+                "https://commons.wikimedia.org/wiki/File:Kirstie_Gordon,_2019_Ashes_Test.jpg",
+            "http://commons.wikimedia.org/wiki/File:Panna_Ghosh.jpg":
+                "https://commons.wikimedia.org/wiki/File:Panna_Ghosh.jpg",
+            "https://commons.m.wikimedia.org/wiki/File:Panna_Ghosh.jpg":
+                "https://commons.wikimedia.org/wiki/File:Panna_Ghosh.jpg",
+            "https://commons.wikimedia.org/wiki/File%3APanna_Ghosh.jpg":
+                "https://commons.wikimedia.org/wiki/File%3APanna_Ghosh.jpg",
+        }.items():
+            photo, why = self.photo(pageUrl=given)
+            self.assertIsNone(why, given)
+            self.assertEqual(photo["pageUrl"], expected)
+            self.assertEqual(check(PHOTO, photo, "photo"), [], given)
+        for given in ("https://en.wikipedia.org/wiki/File:Panna_Ghosh.jpg",
+                      "https://commons.wikimedia.org/wiki/Panna_Ghosh",
+                      "https://commons.wikimedia.org.example.org/wiki/File:X.jpg", ""):
+            self.assertEqual(self.photo(pageUrl=given), (None, photos.NOT_WIKIMEDIA), given)
+
+    def test_no_thumbnail_scales_the_original_through_special_filepath(self):
+        photo, why = self.photo(thumbUrl="", url="https://upload.wikimedia.org/wikipedia/commons/7/7e/Kirstie_Gordon,_2019_Ashes_Test.jpg")
+        self.assertIsNone(why)
+        self.assertEqual(photo["thumbUrl"], "https://commons.wikimedia.org/wiki/Special:FilePath/"
+                                            "Kirstie_Gordon%2C_2019_Ashes_Test.jpg?width=480")
+        self.assertEqual(check(PHOTO, photo, "photo"), [])
+        # Only an original on upload.wikimedia.org is scaled.
+        self.assertEqual(self.photo(thumbUrl="", url="https://example.org/x.jpg"), (None, photos.NO_THUMB))
+
+    def test_the_log_shows_the_shape_of_refused_urls(self):
+        fake = FakeWikimedia([("Q1", "1", "Phillip Hughes.JPG"), ("Q2", "2", "Panna Ghosh.jpg")], {
+            "Phillip Hughes.JPG": page("Phillip Hughes.JPG", "CC BY-SA 3.0",
+                                       thumb="https://cdn.example.org/thumbs/abc/def/Phillip_Hughes.JPG?w=480"),
+            "Panna Ghosh.jpg": page("Panna Ghosh.jpg", "CC BY-SA 3.0",
+                                    description="https://en.wikipedia.org/wiki/File:Panna_Ghosh.jpg")})
+        got, stats = self.resolve(fake, {"aaaa0001", "aaaa0002"}, {"1": "aaaa0001", "2": "aaaa0002"})
+        self.assertEqual((got, stats["rejected"]), ({}, 2))
+        self.assertIn("thumbnail or page not on Wikimedia 2 [File:Phillip Hughes.JPG (thumb "
+                      "https://cdn.example.org/thumbs/abc..., page https://commons.wikimedia.org/wiki/File:Phillip_Hughes.JPG...); "
+                      "File:Panna Ghosh.jpg (thumb https://upload.wikimedia.org/wikipedia/commons..., "
+                      "page https://en.wikipedia.org/wiki/File:Panna_Ghosh.jpg...)]", self.logs)
+        self.assertNotIn("?w=480", self.logs)
 
 
 class LicenceTests(PhotoTestCase):

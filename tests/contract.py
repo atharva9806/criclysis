@@ -275,7 +275,7 @@ FORMAT_PAYLOAD = Obj({
 })
 # Optional: a freely licensed image from Wikimedia Commons (pipeline/photos.py).
 PHOTO = Obj({
-    "thumbUrl": Str(r"https://upload\.wikimedia\.org/\S+"),
+    "thumbUrl": Str(r"https://(upload\.wikimedia\.org/|commons\.wikimedia\.org/(w/thumb\.php|wiki/Special:FilePath/))\S*"),
     "pageUrl": Str(r"https://commons\.wikimedia\.org/\S+"),
     "author": Str(r".*\S.*"), "license": Str(r".*\S.*"),
     "licenseUrl": Null(Str(r"https?://\S+")),

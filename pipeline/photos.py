@@ -165,6 +165,60 @@ def _https(url: str) -> str:
     return "https:" + url if url.startswith("//") else url
 
 
+def _parts(url: str) -> tuple[str, str, str, str]:
+    """(scheme, host, decoded path, query) of a possibly protocol-relative URL."""
+    parts = urllib.parse.urlsplit(_https(url.strip()))
+    return parts.scheme.lower(), (parts.hostname or ""), urllib.parse.unquote(parts.path), parts.query
+
+
+def wikimedia_thumb(url: str) -> str | None:
+    """The thumbnail URL as https, if it is one of Wikimedia's shapes, else None:
+    https://upload.wikimedia.org/..., or on commons.wikimedia.org /w/thumb.php
+    or /wiki/Special:FilePath/. Any other host is refused, so the site never
+    hotlinks from elsewhere."""
+    scheme, host, path, query = _parts(url)
+    if scheme not in ("http", "https"):
+        return None
+    if host == "upload.wikimedia.org" or (
+            host == "commons.wikimedia.org" and
+            (path == "/w/thumb.php" or path.startswith("/wiki/Special:FilePath/"))):
+        return urllib.parse.urlunsplit(("https", host, urllib.parse.urlsplit(_https(url.strip())).path,
+                                        query, ""))
+    return None
+
+
+def wikimedia_page(url: str) -> str | None:
+    """The file page as https://commons.wikimedia.org/wiki/File:..., from the
+    desktop or mobile host, else None."""
+    scheme, host, path, query = _parts(url)
+    if scheme in ("http", "https") and host in ("commons.wikimedia.org", "commons.m.wikimedia.org") \
+            and path.startswith("/wiki/File:"):
+        return urllib.parse.urlunsplit(("https", "commons.wikimedia.org",
+                                        urllib.parse.urlsplit(_https(url.strip())).path, query, ""))
+    return None
+
+
+def filepath_thumb(original: str) -> str | None:
+    """A 480px thumbnail through Special:FilePath (documented: it redirects to a
+    scaled copy for ``?width=``), for an original on upload.wikimedia.org."""
+    scheme, host, path, _query = _parts(original)
+    name = path.rsplit("/", 1)[-1]
+    if scheme not in ("http", "https") or host != "upload.wikimedia.org" or not name:
+        return None
+    return (f"https://commons.wikimedia.org/wiki/Special:FilePath/"
+            f"{urllib.parse.quote(name.replace(' ', '_'))}?width={THUMB_WIDTH}")
+
+
+def url_shape(url: str) -> str:
+    """Scheme, host and the start of the path, for the log: never the whole URL."""
+    if not url:
+        return "(none)"
+    parts = urllib.parse.urlsplit(url.strip())
+    prefix = "/".join(parts.path.split("/")[:3])[:40]
+    return f"{parts.scheme + '://' if parts.scheme else ''}{'//' if url.startswith('//') else ''}" \
+           f"{parts.netloc}{prefix}..."
+
+
 def to_photo(info: dict) -> tuple[dict | None, str | None]:
     """(photo, None) for an acceptable Commons file, else (None, why not):
     the licence's name, or one of FILE_REASONS."""
@@ -177,12 +231,15 @@ def to_photo(info: dict) -> tuple[dict | None, str | None]:
         return None, NO_LICENCE
     if not licence_accepted(licence):
         return None, licence
-    if not info.get("thumbUrl"):
-        return None, NO_THUMB
-    thumb = _https(info["thumbUrl"])
-    page = _https(info.get("pageUrl", ""))
-    if not thumb.startswith("https://upload.wikimedia.org/") or \
-            not page.startswith("https://commons.wikimedia.org/"):
+    if info.get("thumbUrl"):
+        thumb = wikimedia_thumb(info["thumbUrl"])
+    else:
+        # No thumbnail URL in the answer: scale the original through Special:FilePath.
+        thumb = filepath_thumb(info.get("url", ""))
+        if thumb is None:
+            return None, NO_THUMB
+    page = wikimedia_page(info.get("pageUrl", ""))
+    if thumb is None or page is None:
         return None, NOT_WIKIMEDIA
     licence_url = _https(plain_text(info.get("licenseUrl", "")))
     # Commons usually gives the licence URL. When a GODL-India file has none,
@@ -313,6 +370,7 @@ def parse_imageinfo(payload: dict) -> dict[str, dict]:
         meta = info.get("extmetadata") or {}
         value = lambda key: str((meta.get(key) or {}).get("value") or "")  # noqa: E731
         out[name] = {"thumbUrl": info.get("thumburl") or "", "pageUrl": info.get("descriptionurl") or "",
+                     "url": info.get("url") or "",
                      "artist": value("Artist"), "license": value("LicenseShortName"),
                      "licenseUrl": value("LicenseUrl")}
         if info.get("thumberror"):
@@ -549,8 +607,12 @@ def resolve_photos(person_ids: Iterable[str], register: dict[str, str], *,
         else:
             rejected[reason] += 1
             if reason in FILE_REASONS and len(examples[reason]) < 3:
-                error = f" ({info['error']})" if info.get("error") else ""
-                examples[reason].append(f"File:{with_image[pid]}{error}")
+                if reason == NOT_WIKIMEDIA:
+                    detail = (f" (thumb {url_shape(info.get('thumbUrl', ''))}, "
+                              f"page {url_shape(info.get('pageUrl', ''))})")
+                else:
+                    detail = f" ({info['error']})" if info.get("error") else ""
+                examples[reason].append(f"File:{with_image[pid]}{detail}")
     stats["accepted"], stats["rejected"] = len(photos), sum(rejected.values())
 
     if wikidata:

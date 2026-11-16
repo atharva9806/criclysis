@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Replay } from "@/lib/contract/pipeline";
 import type { InningsCard } from "@/lib/replay/engine";
 import { Flag } from "../broadcast/Flag";
+import { ScrollRegion } from "../ScrollRegion";
 import { fixed, TEAM_COLORS } from "./format";
 import { useMark } from "./marks";
 
@@ -87,7 +88,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
         </span>
       </p>
 
-      <div className="mt-3 overflow-x-auto">
+      <ScrollRegion label={`${shown.team} batting, innings ${shown.innings + 1}`} className="mt-3">
         <table className="w-full text-sm sm:min-w-[34rem]">
           <caption className="sr-only">
             {shown.team} batting, innings {shown.innings + 1}
@@ -131,7 +132,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
             </tr>
           </tfoot>
         </table>
-      </div>
+      </ScrollRegion>
       {yetToBat.length > 0 && (
         <p className="mt-2 text-xs text-muted">
           {shown.complete ? "Did not bat" : "Yet to bat"}: {yetToBat.map(({ p }) => p.name).join(", ")}
@@ -144,7 +145,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
         </p>
       )}
 
-      <div className="mt-4 overflow-x-auto">
+      <ScrollRegion label={`${shown.bowlingTeam} bowling, innings ${shown.innings + 1}`} className="mt-4">
         <table className="w-full text-sm sm:min-w-[30rem]">
           <caption className="sr-only">
             {shown.bowlingTeam} bowling, innings {shown.innings + 1}
@@ -176,7 +177,7 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollRegion>
       <p className="mt-3 text-xs text-muted">Replays carry no fielders, so catches name only the bowler.</p>
     </section>
   );

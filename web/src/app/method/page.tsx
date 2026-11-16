@@ -223,6 +223,19 @@ export default async function MethodPage() {
             is shown with its author and licence, linked to the file&apos;s page on Commons. An id that leads to more than one Wikidata entry gets no photo
             rather than a guessed one, and a player without a usable image is shown with their initials.
           </p>
+          <p>
+            <strong>Flags and team colours.</strong> Flags are from{" "}
+            <a href="https://github.com/lipis/flag-icons" className="link">
+              flag-icons
+            </a>{" "}
+            (copyright 2013 Panayiotis Lipiridis,{" "}
+            <a href="https://github.com/lipis/flag-icons/blob/main/LICENSE" className="link">
+              MIT licence
+            </a>
+            ). Sides without a national flag of their own, such as West Indies, composite XIs and Ireland (which represents the whole island), are shown
+            with a badge in their colours instead. Team colours are the sides&apos; familiar kit colours, used for decoration only; no team or board logos
+            are shown.
+          </p>
         </Prose>
 
         <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_1fr]">

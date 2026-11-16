@@ -565,19 +565,19 @@ async function Analysis({ slug, fmt, gender, teamCode }: { slug: string; fmt: Fm
           <>
             <Section id="matchups" title="Batting matchups" sub="Against each bowling type and family, by phase of the innings, and by how long the batter has been in.">
               <div className="space-y-6">
-                <SplitTable rows={bat("type")} label={lab} subjectHeader="Bowling type" empty={batEmpty} />
-                <SplitTable rows={bat("family")} label={lab} subjectHeader="Pace or spin" empty={batEmpty} />
-                <SplitTable rows={bat("phase")} label={lab} subjectHeader="Phase" empty={batEmpty} />
-                <SplitTable rows={bat("typePhase")} label={lab} subjectHeader="Type and phase" empty={batEmpty} />
-                <SplitTable rows={bat("entry")} label={lab} subjectHeader="Stage of innings" empty={batEmpty} />
+                <SplitTable rows={bat("type")} label={lab} caption="Batting: bowling type" subjectHeader="Bowling type" empty={batEmpty} />
+                <SplitTable rows={bat("family")} label={lab} caption="Batting: pace or spin" subjectHeader="Pace or spin" empty={batEmpty} />
+                <SplitTable rows={bat("phase")} label={lab} caption="Batting: phase" subjectHeader="Phase" empty={batEmpty} />
+                <SplitTable rows={bat("typePhase")} label={lab} caption="Batting: type and phase" subjectHeader="Type and phase" empty={batEmpty} />
+                <SplitTable rows={bat("entry")} label={lab} caption="Batting: stage of innings" subjectHeader="Stage of innings" empty={batEmpty} />
               </div>
             </Section>
             <Section id="context" title="Batting by context">
               <div className="space-y-6">
-                <SplitTable rows={bat("opposition")} label={lab} subjectHeader="Opposition" empty={batEmpty} />
-                <SplitTable rows={[...bat("home"), ...bat("chase")]} label={lab} subjectHeader="Home and chase" empty={batEmpty} />
-                <SplitTable rows={bat("position").sort((a, b) => Number(a.subject) - Number(b.subject))} label={lab} subjectHeader="Batting position" empty={batEmpty} />
-                <SplitTable rows={bat("inningsNo")} label={lab} subjectHeader="Innings" empty={batEmpty} />
+                <SplitTable rows={bat("opposition")} label={lab} caption="Batting: opposition" subjectHeader="Opposition" empty={batEmpty} />
+                <SplitTable rows={[...bat("home"), ...bat("chase")]} label={lab} caption="Batting: home and chase" subjectHeader="Home and chase" empty={batEmpty} />
+                <SplitTable rows={bat("position").sort((a, b) => Number(a.subject) - Number(b.subject))} label={lab} caption="Batting: batting position" subjectHeader="Batting position" empty={batEmpty} />
+                <SplitTable rows={bat("inningsNo")} label={lab} caption="Batting: innings" subjectHeader="Innings" empty={batEmpty} />
                 <details className="group card p-4">
                   <summary className="flex min-h-8 items-center justify-between font-display text-lg font-bold uppercase tracking-[0.03em]">
                     Venues and host countries
@@ -586,14 +586,14 @@ async function Analysis({ slug, fmt, gender, teamCode }: { slug: string; fmt: Fm
                     </span>
                   </summary>
                   <div className="mt-4 space-y-6">
-                    <SplitTable rows={bat("venue")} label={lab} subjectHeader="Venue" empty={batEmpty} />
-                    <SplitTable rows={bat("country")} label={lab} subjectHeader="Host country" empty={batEmpty} />
+                    <SplitTable rows={bat("venue")} label={lab} caption="Batting: venue" subjectHeader="Venue" empty={batEmpty} />
+                    <SplitTable rows={bat("country")} label={lab} caption="Batting: host country" subjectHeader="Host country" empty={batEmpty} />
                   </div>
                 </details>
               </div>
             </Section>
             <Section id="vs-bowlers" title="Head to head with bowlers" sub="The bowlers this batter has faced most.">
-              <SplitTable rows={bat("vsBowler")} label={lab} subjectHeader="Bowler" empty={batEmpty} />
+              <SplitTable rows={bat("vsBowler")} label={lab} caption="Batting: head to head with bowlers" subjectHeader="Bowler" empty={batEmpty} />
             </Section>
           </>
         ) : null}
@@ -602,15 +602,15 @@ async function Analysis({ slug, fmt, gender, teamCode }: { slug: string; fmt: Fm
           <>
             <Section id="bowling" title="Bowling splits">
               <div className="space-y-6">
-                <SplitTable rows={bowl("hand")} label={lab} subjectHeader="Batter" empty={bowlEmpty} />
-                <SplitTable rows={bowl("phase")} label={lab} subjectHeader="Phase" empty={bowlEmpty} />
-                <SplitTable rows={bowl("opposition")} label={lab} subjectHeader="Opposition" empty={bowlEmpty} />
-                <SplitTable rows={[...bowl("home"), ...bowl("inningsNo")]} label={lab} subjectHeader="Context" empty={bowlEmpty} />
-                <SplitTable rows={bowl("country")} label={lab} subjectHeader="Host country" empty={bowlEmpty} />
+                <SplitTable rows={bowl("hand")} label={lab} caption="Bowling: by batting hand" subjectHeader="Batter" empty={bowlEmpty} />
+                <SplitTable rows={bowl("phase")} label={lab} caption="Bowling: phase" subjectHeader="Phase" empty={bowlEmpty} />
+                <SplitTable rows={bowl("opposition")} label={lab} caption="Bowling: opposition" subjectHeader="Opposition" empty={bowlEmpty} />
+                <SplitTable rows={[...bowl("home"), ...bowl("inningsNo")]} label={lab} caption="Bowling: context" subjectHeader="Context" empty={bowlEmpty} />
+                <SplitTable rows={bowl("country")} label={lab} caption="Bowling: host country" subjectHeader="Host country" empty={bowlEmpty} />
               </div>
             </Section>
             <Section id="vs-batters" title="Head to head with batters">
-              <SplitTable rows={bowl("vsBatter")} label={lab} subjectHeader="Batter" empty={bowlEmpty} />
+              <SplitTable rows={bowl("vsBatter")} label={lab} caption="Bowling: head to head with batters" subjectHeader="Batter" empty={bowlEmpty} />
             </Section>
           </>
         ) : null}

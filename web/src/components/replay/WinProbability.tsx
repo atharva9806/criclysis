@@ -160,7 +160,8 @@ export default function WinProbability({
               <span className="group-open:hidden">View as table</span>
               <span className="hidden group-open:inline">Hide table</span>
             </summary>
-            <div className="table-scroll mt-2 max-h-64 overflow-y-auto rounded-control border border-line">
+            {/* Scrolls inside its box, so it takes focus for arrow-key scrolling. */}
+            <div tabIndex={0} role="region" aria-label="Win probability at the end of each over (scrolls)" className="table-scroll mt-2 max-h-64 overflow-y-auto rounded-control border border-line">
               <table className="data-table text-xs">
                 <caption className="sr-only">Win probability at the end of each over</caption>
                 <thead>

@@ -311,7 +311,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
           </>
         )}
 
-        <nav aria-labelledby="explore-title" className="mt-12">
+        <section aria-labelledby="explore-title" className="mt-12">
           <h2 id="explore-title" className="section-title mb-4">
             Explore
           </h2>
@@ -330,7 +330,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
               </li>
             ))}
           </ul>
-        </nav>
+        </section>
       </div>
     </>
   );

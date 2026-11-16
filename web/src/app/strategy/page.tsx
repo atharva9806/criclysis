@@ -147,7 +147,7 @@ async function PlayerMode({ p, fmt, meta }: { p?: string; fmt?: ReturnType<typeo
             <Section title="Their batting against each bowling type and phase">
               <div className="space-y-6">
                 <SplitTable rows={dossier.batting.vsType} label={lab} subjectHeader="Bowling type" empty={batEmpty} />
-                <SplitTable rows={dossier.batting.byPhase} label={lab} subjectHeader="Phase" empty={batEmpty} />
+                <SplitTable rows={dossier.batting.byPhase} label={lab} caption="Batting: phase" subjectHeader="Phase" empty={batEmpty} />
               </div>
             </Section>
           ) : null}
@@ -155,7 +155,7 @@ async function PlayerMode({ p, fmt, meta }: { p?: string; fmt?: ReturnType<typeo
             <Section title="Their bowling by batter hand and phase">
               <div className="space-y-6">
                 <SplitTable rows={dossier.bowling.byHand} label={lab} subjectHeader="Batter" empty={bowlEmpty} />
-                <SplitTable rows={dossier.bowling.byPhase} label={lab} subjectHeader="Phase" empty={bowlEmpty} />
+                <SplitTable rows={dossier.bowling.byPhase} label={lab} caption="Bowling: phase" subjectHeader="Phase" empty={bowlEmpty} />
               </div>
             </Section>
           ) : null}

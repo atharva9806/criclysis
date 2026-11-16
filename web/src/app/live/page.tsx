@@ -8,6 +8,7 @@ import { fmtParam, genderParam, type SearchParams } from "@/lib/params";
 import { GenderToggle, MatchGrid, NoGenderData, PageHeader, ReplayGrid, Section, genderHref } from "@/components/data";
 import { CardGridSkeleton } from "@/components/Loading";
 import { EmptyState, SegmentedLinks } from "@/components/ui";
+import { Ground } from "@/components/broadcast/Ground";
 
 export const metadata: Metadata = {
   title: "Latest results and replays · Criclysis",
@@ -48,13 +49,13 @@ async function Replays({ gender }: { gender: Gender }) {
     <div className="space-y-8">
       {featured.length > 0 ? (
         <div>
-          <h3 className="label mb-3">Finals</h3>
+          <h3 className="sub-title mb-3">Finals</h3>
           <ReplayGrid matches={featured} />
         </div>
       ) : null}
       {recent.length > 0 ? (
         <div>
-          <h3 className="label mb-3">Recent ODIs and T20Is</h3>
+          <h3 className="sub-title mb-3">Recent ODIs and T20Is</h3>
           <ReplayGrid matches={recent} cols={4} />
         </div>
       ) : null}
@@ -70,60 +71,68 @@ export default async function LivePage({ searchParams }: { searchParams: Promise
   const word = gender === "female" ? "women's" : "men's";
 
   return (
-    <div className="page">
-      <PageHeader
-        eyebrow="Live"
-        title="Latest results, and real matches replayed"
-        sub="There is no live-score feed here. New internationals arrive from Cricsheet's public files, refreshed once a day, and any match with ball-by-ball data can be replayed."
-        actions={<GenderToggle gender={gender} href={(g) => genderHref("/live", g, { format })} />}
-      />
-
-      <Section
-        id="results"
-        title={`Latest ${word} ${format ? `${FORMAT_LABEL[format]} ` : ""}results`}
-        sub={meta ? `The data runs to ${date(meta.dataAsOf)}.` : "No dataset has been imported yet."}
-        actions={
-          <SegmentedLinks
-            label="Format"
-            items={FORMATS.map((o) => ({ key: o.label, href: genderHref("/live", gender, { format: o.value }), label: o.label, active: o.value === format }))}
+    <>
+      {/* The floodlit band: a night match in both themes. */}
+      <section aria-label="Live" className="theme-dark relative isolate overflow-hidden border-b border-line bg-bg">
+        <Ground variant="band" id="live-ground" shift={300} />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/80 to-bg/25 max-md:to-bg/80" />
+        <div className="relative mx-auto max-w-page px-4 pb-2 pt-8 sm:px-6 md:pt-12">
+          <PageHeader
+            eyebrow="Live"
+            title="Latest results, and real matches replayed"
+            sub="There is no live-score feed here. New internationals arrive from Cricsheet's public files, refreshed once a day, and any match with ball-by-ball data can be replayed."
+            actions={<GenderToggle gender={gender} href={(g) => genderHref("/live", g, { format })} />}
           />
-        }
-      >
-        <Suspense key={`${gender}-${format ?? "all"}`} fallback={<CardGridSkeleton label="Loading results" />}>
-          <Results gender={gender} format={format} />
-        </Suspense>
-      </Section>
-
-      <Section
-        id="replays"
-        title="Replay a match"
-        sub="Every replay is a real match, played back ball by ball from its Cricsheet record, with the scoreboard, win probability, projected and par scores, and each batter's record against the bowling."
-      >
-        <Suspense key={gender} fallback={<CardGridSkeleton label="Loading replays" count={3} height="h-44" />}>
-          <Replays gender={gender} />
-        </Suspense>
-      </Section>
-
-      <section aria-labelledby="how-title" className="card mt-12 p-5 sm:p-6">
-        <h2 id="how-title" className="text-heading">
-          What &ldquo;live&rdquo; means here
-        </h2>
-        <div className="mt-2 max-w-3xl space-y-2 text-sm leading-relaxed text-muted">
-          <p>
-            Criclysis uses no live-score service and scrapes no websites. A scheduled job downloads Cricsheet&apos;s public match files every day and
-            refreshes the database, so a finished international usually appears within about a day.
-          </p>
-          <p>
-            Replays step through a real match one delivery at a time. Win probability, projected score and par come from a model fitted to Cricsheet
-            history, and are shown only for full-length ODIs and T20Is not decided by a rain rule.
-          </p>
         </div>
-        <p className="mt-3 text-sm">
-          <Link href="/method#live" className="link">
-            How the refresh and the model work
-          </Link>
-        </p>
       </section>
-    </div>
+      <div className="page">
+        <Section
+          id="results"
+          title={`Latest ${word} ${format ? `${FORMAT_LABEL[format]} ` : ""}results`}
+          sub={meta ? `The data runs to ${date(meta.dataAsOf)}.` : "No dataset has been imported yet."}
+          actions={
+            <SegmentedLinks
+              label="Format"
+              items={FORMATS.map((o) => ({ key: o.label, href: genderHref("/live", gender, { format: o.value }), label: o.label, active: o.value === format }))}
+            />
+          }
+        >
+          <Suspense key={`${gender}-${format ?? "all"}`} fallback={<CardGridSkeleton label="Loading results" />}>
+            <Results gender={gender} format={format} />
+          </Suspense>
+        </Section>
+
+        <Section
+          id="replays"
+          title="Replay a match"
+          sub="Every replay is a real match, played back ball by ball from its Cricsheet record, with the scoreboard, win probability, projected and par scores, and each batter's record against the bowling."
+        >
+          <Suspense key={gender} fallback={<CardGridSkeleton label="Loading replays" count={3} height="h-44" />}>
+            <Replays gender={gender} />
+          </Suspense>
+        </Section>
+
+        <section aria-labelledby="how-title" className="card mt-12 p-5 sm:p-6">
+          <h2 id="how-title" className="section-title">
+            What &ldquo;live&rdquo; means here
+          </h2>
+          <div className="mt-2 max-w-3xl space-y-2 text-sm leading-relaxed text-muted">
+            <p>
+              Criclysis uses no live-score service and scrapes no websites. A scheduled job downloads Cricsheet&apos;s public match files every day and
+              refreshes the database, so a finished international usually appears within about a day.
+            </p>
+            <p>
+              Replays step through a real match one delivery at a time. Win probability, projected score and par come from a model fitted to Cricsheet
+              history, and are shown only for full-length ODIs and T20Is not decided by a rain rule.
+            </p>
+          </div>
+          <p className="mt-3 text-sm">
+            <Link href="/method#live" className="link">
+              How the refresh and the model work
+            </Link>
+          </p>
+        </section>
+      </div>
+    </>
   );
 }

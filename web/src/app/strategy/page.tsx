@@ -9,7 +9,7 @@ import { MatchGrid, Muted, PageHeader, Section, Select, SplitTable } from "@/com
 function Evidence({ title, claims, empty }: { title: string; claims: TraitRow[]; empty: string }) {
   return (
     <div className="card p-5">
-      <h3 className="font-semibold">{title}</h3>
+      <h3 className="sub-title">{title}</h3>
       {claims.length ? (
         <ul className="mt-3 space-y-3 text-sm">
           {claims.map((c) => (
@@ -31,7 +31,7 @@ function Evidence({ title, claims, empty }: { title: string; claims: TraitRow[];
 function KeyPlayers({ title, f, players }: { title: string; f: string; players: { playerId: string; name: string; slug: string | null; stat: string; traits: TraitRow[] }[] }) {
   return (
     <div className="card p-5">
-      <h3 className="font-semibold">{title}</h3>
+      <h3 className="sub-title">{title}</h3>
       {players.length ? (
         <ul className="mt-3 space-y-3 text-sm">
           {players.map((p) => (
@@ -195,7 +195,7 @@ async function TeamMode({ team, opp, fmt, minMatches }: { team?: string; opp?: s
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {plan.lines.map((g) => (
                 <div key={g.heading} className="card p-5">
-                  <h3 className="font-semibold">{g.heading}</h3>
+                  <h3 className="sub-title">{g.heading}</h3>
                   <ul className="mt-3 space-y-2 text-sm">
                     {g.items.map((l, i) => (
                       <li key={i}>

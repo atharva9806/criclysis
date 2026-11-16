@@ -371,6 +371,10 @@
   .card-title {
     @apply font-display text-lg font-bold uppercase leading-tight tracking-[0.02em] text-fg;
   }
+  /* A sub-heading inside a section or card (h3). */
+  .sub-title {
+    @apply font-display text-lg font-bold uppercase leading-tight tracking-[0.03em];
+  }
   /* A section heading with the accent tick. */
   .section-title {
     @apply flex items-center gap-3 font-display text-heading uppercase;

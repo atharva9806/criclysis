@@ -26,13 +26,13 @@ export default function MatchReport({ replay, model: modelJson, marks = NO_MARKS
 
   return (
     <MarksProvider value={marks}>
-    <div className="space-y-5" style={sideVars(marks, teams)}>
-      <Scorecard replay={replay} cards={cards} />
-      <div className={`grid grid-cols-1 gap-5 ${tl.maxBalls != null ? "lg:grid-cols-2" : ""}`}>
-        {tl.maxBalls != null && <Worm timeline={tl} cursor={end} maxOvers={tl.maxBalls / 6} />}
-        <WinProbability teams={teams} view={view} series={series} maxOvers={(model?.maxBalls ?? tl.maxBalls ?? 300) / 6} />
+      <div className="space-y-5" style={sideVars(marks, teams)}>
+        <Scorecard replay={replay} cards={cards} />
+        <div className={`grid grid-cols-1 gap-5 ${tl.maxBalls != null ? "lg:grid-cols-2" : ""}`}>
+          {tl.maxBalls != null && <Worm timeline={tl} cursor={end} maxOvers={tl.maxBalls / 6} />}
+          <WinProbability teams={teams} view={view} series={series} maxOvers={(model?.maxBalls ?? tl.maxBalls ?? 300) / 6} />
+        </div>
       </div>
-    </div>
     </MarksProvider>
   );
 }

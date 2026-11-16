@@ -66,7 +66,7 @@ export default function Worm({ timeline, cursor, maxOvers }: { timeline: Timelin
       <h2 id="worm-title" className="card-title">
         Worm
       </h2>
-      <p className="mt-1 text-xs text-muted">Runs after each over. Dots mark overs in which wickets fell.</p>
+      <p className="mt-1 text-xs text-muted">Runs after each over; the side batting second is dashed. Dots mark overs in which wickets fell.</p>
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-muted">No overs bowled yet.</p>
       ) : (
@@ -89,7 +89,9 @@ export default function Worm({ timeline, cursor, maxOvers }: { timeline: Timelin
                   dataKey={`i${n}`}
                   name={`i${n}`}
                   stroke={TEAM_COLORS[n]}
-                  strokeWidth={2}
+                  strokeWidth={2.5}
+                  // The chasing side is dashed, so the two lines differ by more than colour.
+                  strokeDasharray={n === 1 ? "7 4" : undefined}
                   connectNulls
                   isAnimationActive={false}
                   dot={dot(n)}
@@ -104,7 +106,8 @@ export default function Worm({ timeline, cursor, maxOvers }: { timeline: Timelin
             <span className="group-open:hidden">View as table</span>
             <span className="hidden group-open:inline">Hide table</span>
           </summary>
-          <div className="table-scroll mt-2 max-h-64 overflow-y-auto rounded-control border border-line">
+          {/* Scrolls inside its box, so it takes focus for arrow-key scrolling. */}
+          <div tabIndex={0} role="region" aria-label="Runs and wickets after each over (scrolls)" className="table-scroll mt-2 max-h-64 overflow-y-auto rounded-control border border-line">
             <table className="data-table text-xs">
               <caption className="sr-only">Runs and wickets after each over</caption>
               <thead>

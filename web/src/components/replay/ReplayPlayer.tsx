@@ -23,6 +23,7 @@ import { WinModel, type WinModelCore } from "@/lib/winprob/model";
 import BallTicker from "./BallTicker";
 import Controls, { type Speed } from "./Controls";
 import { formatDate, pct } from "./format";
+import { MarksProvider, sideVars, type Marks } from "./marks";
 import Matchup from "./Matchup";
 import Projection, { parInfo } from "./Projection";
 import Scoreboard from "./Scoreboard";
@@ -40,6 +41,10 @@ export type ReplayPlayerProps = {
   /** The date the dataset runs to, for the credit line. Defaults to the context's. */
   datasetAsOf?: string | null;
   initialCursor?: number;
+  /** Each side's colours and flag, by team name (built on the server from lib/teams/flags.ts). */
+  marks?: Marks;
+  /** Render the title block; the live page draws its own floodlit header instead. */
+  header?: boolean;
 };
 
 /** Milliseconds per delivery at each speed. */
@@ -78,7 +83,9 @@ function overSummary(tl: Timeline, s: MatchState, view: ProbabilityView, teams: 
   return parts.join(" ");
 }
 
-export default function ReplayPlayer({ replay, model: modelJson, context = null, datasetAsOf, initialCursor = 0 }: ReplayPlayerProps) {
+const NO_MARKS: Marks = {};
+
+export default function ReplayPlayer({ replay, model: modelJson, context = null, datasetAsOf, initialCursor = 0, marks = NO_MARKS, header = true }: ReplayPlayerProps) {
   const tl = useMemo(() => buildTimeline(replay), [replay]);
   const model = useMemo(() => (modelJson ? new WinModel(modelJson) : null), [modelJson]);
   const eligibility = useMemo(() => winProbEligibility(replay, model), [replay, model]);
@@ -169,89 +176,93 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
   const toss = replay.toss?.winner ? `${replay.toss.winner} won the toss and chose to ${replay.toss.decision === "bat" ? "bat" : "field"}.` : null;
 
   return (
-    <div data-replay-root>
-      <header className="mb-6">
-        <p className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted">
-          <span className="badge badge-accent font-semibold uppercase tracking-wider">Replay</span>
-          <span>
-            {[replay.event, replay.stage].filter(Boolean).join(" · ")}
-            {replay.event || replay.stage ? " · " : ""}
-            {formatLabel}
-          </span>
+    <MarksProvider value={marks}>
+      <div data-replay-root style={sideVars(marks, teams)}>
+        {header ? (
+          <header className="mb-6">
+            <p className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted">
+              <span className="badge badge-accent font-semibold uppercase tracking-wider">Replay</span>
+              <span>
+                {[replay.event, replay.stage].filter(Boolean).join(" · ")}
+                {replay.event || replay.stage ? " · " : ""}
+                {formatLabel}
+              </span>
+            </p>
+            <h1 className="mt-3 text-title text-balance">{replay.title}</h1>
+            <p className="mt-2 text-sm text-muted">
+              {formatDate(replay.date)} · {replay.venue}
+              {toss ? ` · ${toss}` : ""}
+            </p>
+            <p className="mt-1 text-sm text-muted">A real match, replayed ball by ball from its Cricsheet record. Nothing here is simulated.</p>
+          </header>
+        ) : null}
+
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {announcement}
         </p>
-        <h1 className="mt-3 text-title text-balance">{replay.title}</h1>
-        <p className="mt-2 text-sm text-muted">
-          {formatDate(replay.date)} · {replay.venue}
-          {toss ? ` · ${toss}` : ""}
-        </p>
-        <p className="mt-1 text-sm text-muted">A real match, replayed ball by ball from its Cricsheet record. Nothing here is simulated.</p>
-      </header>
 
-      <p className="sr-only" aria-live="polite" aria-atomic="true">
-        {announcement}
-      </p>
-
-      {total === 0 ? (
-        <section className="card p-6 text-sm">
-          <p className="font-semibold">No ball-by-ball record for this match.</p>
-          <p className="mt-1 text-muted">{outcomeOf(replay).text || "No result was recorded."}</p>
-        </section>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-            <div className="min-w-0 space-y-5 lg:col-span-2">
-              <Scoreboard replay={replay} timeline={tl} state={state} card={cards[state.innings]} />
-              <Controls
-                playing={playing}
-                speed={speed}
-                cursor={cursor}
-                total={total}
-                position={positionText(tl, state)}
-                onToggle={toggle}
-                onStep={step}
-                onOver={over}
-                onSeek={seek}
-                onSpeed={setSpeed}
-              />
-              <BallTicker replay={replay} timeline={tl} cursor={cursor} />
-              <WinProbability teams={teams} view={view} series={series} maxOvers={(model?.maxBalls ?? 300) / 6} hiddenReason={eligibility.ok ? null : eligibility.reason} />
-            </div>
-            <div className="min-w-0 space-y-5">
-              <Projection state={state} model={model} eligibility={eligibility} par={par} />
-              <Matchup finished={state.matchComplete} matchup={matchup} hasContext={!!context} datasetAsOf={asOf} matchDate={replay.date} formatLabel={formatLabel} />
-            </div>
-          </div>
-
-          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-5">
-            <div className="min-w-0 xl:col-span-3">
-              <Scorecard replay={replay} cards={cards} />
-            </div>
-            {tl.maxBalls != null && (
-              <div className="min-w-0 xl:col-span-2">
-                <Worm timeline={tl} cursor={cursor} maxOvers={tl.maxBalls / 6} />
+        {total === 0 ? (
+          <section className="card p-6 text-sm">
+            <p className="font-semibold">No ball-by-ball record for this match.</p>
+            <p className="mt-1 text-muted">{outcomeOf(replay).text || "No result was recorded."}</p>
+          </section>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+              <div className="min-w-0 space-y-5 lg:col-span-2">
+                <Scoreboard replay={replay} timeline={tl} state={state} card={cards[state.innings]} />
+                <Controls
+                  playing={playing}
+                  speed={speed}
+                  cursor={cursor}
+                  total={total}
+                  position={positionText(tl, state)}
+                  onToggle={toggle}
+                  onStep={step}
+                  onOver={over}
+                  onSeek={seek}
+                  onSpeed={setSpeed}
+                />
+                <WinProbability teams={teams} view={view} series={series} maxOvers={(model?.maxBalls ?? 300) / 6} hiddenReason={eligibility.ok ? null : eligibility.reason} />
+                <BallTicker replay={replay} timeline={tl} cursor={cursor} />
               </div>
-            )}
-          </div>
-        </>
-      )}
+              <div className="min-w-0 space-y-5">
+                <Projection state={state} model={model} eligibility={eligibility} par={par} />
+                <Matchup finished={state.matchComplete} matchup={matchup} hasContext={!!context} datasetAsOf={asOf} matchDate={replay.date} formatLabel={formatLabel} />
+              </div>
+            </div>
 
-      <div className="mt-5">
-        <Squads squads={xi} battingOrder={teams} hasContext={!!context} datasetAsOf={asOf} />
+            <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-5">
+              <div className="min-w-0 xl:col-span-3">
+                <Scorecard replay={replay} cards={cards} />
+              </div>
+              {tl.maxBalls != null && (
+                <div className="min-w-0 xl:col-span-2">
+                  <Worm timeline={tl} cursor={cursor} maxOvers={tl.maxBalls / 6} />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <div className="mt-5">
+          <Squads squads={xi} battingOrder={teams} hasContext={!!context} datasetAsOf={asOf} />
+        </div>
+
+        <footer className="mt-6 text-xs leading-relaxed text-muted">
+          <p>
+            Ball-by-ball data from{" "}
+            <a href="https://cricsheet.org" className="link">
+              Cricsheet
+            </a>
+            , licensed under{" "}
+            <a href="https://creativecommons.org/licenses/by/4.0/" className="link">
+              CC BY 4.0
+            </a>
+            {asOf ? `. Data as of ${formatDate(asOf)}.` : "."} Win probability, projected score and par come from a model fitted to Cricsheet history; see the method notes.
+          </p>
+        </footer>
       </div>
-
-      <footer className="mt-6 text-xs leading-relaxed text-muted">
-        <p>
-          Ball-by-ball data from{" "}
-          <a href="https://cricsheet.org" className="link">
-            Cricsheet
-          </a>
-          , licensed under{" "}
-          <a href="https://creativecommons.org/licenses/by/4.0/" className="link">
-            CC BY 4.0
-          </a>
-          {asOf ? `. Data as of ${formatDate(asOf)}.` : "."} Win probability, projected score and par come from a model fitted to Cricsheet history; see the method notes.
-        </p>
-      </footer>
-    </div>
+    </MarksProvider>
   );
 }

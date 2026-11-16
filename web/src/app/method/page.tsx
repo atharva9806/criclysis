@@ -44,11 +44,11 @@ function Prose({ children }: { children: ReactNode }) {
 function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
   return (
     <li className="card flex gap-4 p-4 sm:p-5">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-soft text-sm font-semibold text-accent-strong" aria-hidden="true">
+      <span className="score grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-soft text-xl text-accent-strong" aria-hidden="true">
         {n}
       </span>
       <div className="min-w-0">
-        <h3 className="font-semibold">{title}</h3>
+        <h3 className="sub-title">{title}</h3>
         <div className="mt-1 text-sm leading-relaxed text-muted">{children}</div>
       </div>
     </li>
@@ -118,7 +118,7 @@ function ModelCard({ m }: { m: WinModelSummary }) {
   return (
     <article aria-labelledby={`model-${m.formatKey}`} className="card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 id={`model-${m.formatKey}`} className="text-heading">
+        <h3 id={`model-${m.formatKey}`} className="font-display text-2xl font-bold uppercase">
           {label}
         </h3>
         <p className="text-xs text-muted">
@@ -223,11 +223,24 @@ export default async function MethodPage() {
             is shown with its author and licence, linked to the file&apos;s page on Commons. An id that leads to more than one Wikidata entry gets no photo
             rather than a guessed one, and a player without a usable image is shown with their initials.
           </p>
+          <p>
+            <strong>Flags and team colours.</strong> Flags are from{" "}
+            <a href="https://github.com/lipis/flag-icons" className="link">
+              flag-icons
+            </a>{" "}
+            (copyright 2013 Panayiotis Lipiridis,{" "}
+            <a href="https://github.com/lipis/flag-icons/blob/main/LICENSE" className="link">
+              MIT licence
+            </a>
+            ). Sides without a national flag of their own, such as West Indies, composite XIs and Ireland (which represents the whole island), are shown
+            with a badge in their colours instead. Team colours are the sides&apos; familiar kit colours, used for decoration only; no team or board logos
+            are shown.
+          </p>
         </Prose>
 
         <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_1fr]">
           <div>
-            <h3 className="mb-3 font-semibold">Coverage in this build</h3>
+            <h3 className="sub-title mb-3">Coverage in this build</h3>
             {coverage.length ? (
               <TableWrap caption="Coverage by format">
                 <thead>
@@ -261,12 +274,12 @@ export default async function MethodPage() {
             ) : null}
           </div>
           <div>
-            <h3 className="mb-3 font-semibold">Sources</h3>
+            <h3 className="sub-title mb-3">Sources</h3>
             {sources.length ? (
               <ul className="space-y-3">
                 {sources.map(([id, s]) => (
                   <li key={id} className="card p-4 text-sm">
-                    <p className="font-semibold">
+                    <p className="sub-title">
                       {s.base.startsWith("http") ? (
                         <a href={s.base} className="link">
                           {s.name}
@@ -356,7 +369,7 @@ export default async function MethodPage() {
 
         {t ? (
           <div className="mt-8">
-            <h3 className="mb-3 font-semibold">Sample thresholds in this build</h3>
+            <h3 className="sub-title mb-3">Sample thresholds in this build</h3>
             <TableWrap caption="Sample thresholds">
               <thead>
                 <tr>
@@ -382,7 +395,7 @@ export default async function MethodPage() {
 
         {cohortKeys.length ? (
           <div className="mt-8">
-            <h3 className="mb-3 font-semibold">Cohort sizes</h3>
+            <h3 className="sub-title mb-3">Cohort sizes</h3>
             <TableWrap caption="Cohort sizes by format">
               <thead>
                 <tr>
@@ -447,7 +460,7 @@ export default async function MethodPage() {
           </p>
         </Prose>
 
-        <h3 className="mb-2 mt-8 font-semibold">Validation on matches the model never saw</h3>
+        <h3 className="sub-title mb-2 mt-8">Validation on matches the model never saw</h3>
         <Prose>
           <p>
             Each model is trained on matches before {holdouts.length === 1 ? date(holdouts[0]) : "its holdout date"} and scored on the

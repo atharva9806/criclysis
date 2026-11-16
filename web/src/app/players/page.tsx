@@ -8,6 +8,7 @@ import { formatKeyLabel, int, num } from "@/lib/format";
 import { fmtParam, genderParam, intParam, qs, roleParam, sortParam, str, type SearchParams } from "@/lib/params";
 import { FilterForm, GenderToggle, Muted, NoGenderData, PageHeader, Pagination, Select, TableWrap, genderHref } from "@/components/data";
 import { TableSkeleton } from "@/components/Loading";
+import { TeamFlag } from "@/components/broadcast/TeamMark";
 
 export const metadata: Metadata = { title: "Players · Criclysis" };
 
@@ -63,7 +64,10 @@ async function Results({ q }: { q: Query }) {
                   <Link href={`/players/${r.slug}${qs({ f: q.format })}`} className="link-quiet font-semibold">
                     {r.name}
                   </Link>
-                  <span className="block truncate text-xs font-normal text-muted">{[r.teams.join(", ") || r.country, r.role].filter(Boolean).join(" · ")}</span>
+                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted">
+                    {r.teams[0] ?? r.country ? <TeamFlag name={(r.teams[0] ?? r.country)!} size="xs" /> : null}
+                    <span className="truncate">{[r.teams.join(", ") || r.country, r.role].filter(Boolean).join(" · ")}</span>
+                  </span>
                 </th>
                 <td className="num">{int(r.matches)}</td>
                 <td className="num">{int(r.batInnings)}</td>

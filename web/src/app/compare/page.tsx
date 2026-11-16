@@ -6,6 +6,8 @@ import { FORMAT_LABEL, formatKeyLabel, genderWord, int, num } from "@/lib/format
 import { fmtParam, qs, str, type SearchParams } from "@/lib/params";
 import { Muted, PageHeader, Section, Select, TableWrap } from "@/components/data";
 import { ChartFrame, PercentileRadar } from "@/components/charts/Charts";
+import { PlayerPhoto } from "@/components/PlayerPhoto";
+import { TeamFlag } from "@/components/broadcast/TeamMark";
 
 type Side = { query: string | undefined; summary: PlayerSummary | null; suggestions: PlayerListRow[] };
 
@@ -60,13 +62,21 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
         <input name={name} defaultValue={s.summary?.player.slug ?? s.query ?? ""} placeholder="Name or profile id" className="input" />
       </label>
       {s.summary ? (
-        <div className="mt-4">
-          <Link href={`/players/${s.summary.player.slug}${qs({ f: fmt })}`} className="link-quiet text-xl font-semibold">
-            {s.summary.player.name}
-          </Link>
-          <p className="text-sm text-muted">
-            {genderWord(s.summary.player.gender)} · {s.summary.player.teams.join(", ") || s.summary.player.country}
-          </p>
+        <div className="mt-4 flex items-start gap-4">
+          <PlayerPhoto photo={s.summary.player.photo} name={s.summary.player.name} team={s.summary.player.teams[0] ?? s.summary.player.country} size="md" credit="compact" />
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 font-display text-sm font-semibold uppercase tracking-[0.06em] text-muted">
+              <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: name === "a" ? "var(--chart-1)" : "var(--chart-2)" }} />
+              Player {name.toUpperCase()}
+            </p>
+            <Link href={`/players/${s.summary.player.slug}${qs({ f: fmt })}`} className="link-quiet mt-1 block font-display text-2xl font-bold uppercase leading-tight">
+              {s.summary.player.name}
+            </Link>
+            <p className="mt-1 flex items-center gap-2 text-sm text-muted">
+              {s.summary.player.teams[0] ?? s.summary.player.country ? <TeamFlag name={(s.summary.player.teams[0] ?? s.summary.player.country)!} size="xs" /> : null}
+              {genderWord(s.summary.player.gender)} · {s.summary.player.teams.join(", ") || s.summary.player.country}
+            </p>
+          </div>
         </div>
       ) : s.query ? (
         <div className="mt-4 text-sm">

@@ -8,6 +8,7 @@ import { DASH, FORMAT_LABEL, int, winPct, year } from "@/lib/format";
 import { genderParam, type SearchParams } from "@/lib/params";
 import { GenderToggle, NoGenderData, PageHeader, TableWrap, genderHref } from "@/components/data";
 import { TableSkeleton } from "@/components/Loading";
+import { TeamFlag } from "@/components/broadcast/TeamMark";
 
 export const metadata: Metadata = { title: "Teams · Criclysis" };
 
@@ -48,7 +49,8 @@ function TeamTable({ teams, minMatches, label }: { teams: TeamListRow[]; minMatc
         {teams.map((t) => (
           <tr key={t.id}>
             <th scope="row">
-              <Link href={`/teams/${t.id}`} className="link-quiet font-semibold">
+              <Link href={`/teams/${t.id}`} className="link-quiet inline-flex items-center gap-2.5 font-semibold">
+                <TeamFlag name={t.name} size="sm" />
                 {t.label}
               </Link>
             </th>

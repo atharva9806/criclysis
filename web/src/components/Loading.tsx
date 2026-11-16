@@ -100,7 +100,10 @@ export function NotFoundBody({
   return (
     <div className="page">
       <div className="mx-auto max-w-xl py-6 text-center sm:py-12">
-        <p className="font-mono text-sm font-semibold text-accent">404</p>
+        <p className="score text-[5rem] text-accent" aria-hidden="true">
+          404
+        </p>
+        <p className="sr-only">Error 404.</p>
         <h1 className="mt-2 text-title">{what} not found</h1>
         <div className="mt-3 text-sm leading-relaxed text-muted">
           {children ?? <p>It may not be in the current Cricsheet build, or the address may be mistyped.</p>}

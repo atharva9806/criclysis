@@ -115,7 +115,7 @@ import type { StaticImageData } from "next/image";
 
 /** Turbopack gives a URL string for an SVG import, webpack a StaticImageData; accept both. */
 type FlagAsset = string | StaticImageData;
-import { teamIdentity, type TeamIdentity } from "./colors";
+import { teamIdentity, teamPair, type TeamIdentity } from "./colors";
 
 const FLAGS: Record<string, FlagAsset> = {
   "ae": f_ae,
@@ -238,4 +238,10 @@ export function flagSrc(code: string | null | undefined): string | null {
 
 export function teamMark(name: string | null | undefined, identity: TeamIdentity = teamIdentity(name)): TeamMark {
   return { ...identity, flagSrc: flagSrc(identity.flag) };
+}
+
+/** Two sides keyed by name, in batting order: the first keeps its colours, the second moves off a look-alike (teamPair). */
+export function pairMarks(first: string, second: string): Record<string, TeamMark> {
+  const [a, b] = teamPair(first, second);
+  return { [first]: teamMark(first, a), [second]: teamMark(second, b) };
 }

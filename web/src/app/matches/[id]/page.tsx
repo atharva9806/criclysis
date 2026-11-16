@@ -10,6 +10,8 @@ import { getMatch, getReplay, getWinModel } from "@/lib/data";
 import { formatKeyLabel } from "@/lib/format";
 import { withMatchFacts } from "@/lib/replay/engine";
 import { slimModel } from "@/lib/winprob/model";
+import { pairMarks } from "@/lib/teams/flags";
+import { TeamFlag } from "@/components/broadcast/TeamMark";
 import { PageHeader, genderHref } from "@/components/data";
 import { SectionSkeleton, TableSkeleton } from "@/components/Loading";
 import { Badge, EmptyState } from "@/components/ui";
@@ -40,7 +42,9 @@ async function Report({ match }: { match: MatchRow }) {
   }
   const replay = withMatchFacts(stored, match);
   const model = modelJson ? slimModel(modelJson, { key: match.venueKey, name: match.venue }) : null;
-  return <MatchReport replay={replay} model={model} />;
+  const first = replay.innings[0]?.team ?? match.team1;
+  const marks = pairMarks(first, first === match.team1 ? match.team2 : match.team1);
+  return <MatchReport replay={replay} model={model} marks={marks} />;
 }
 
 export default async function MatchPage({ params }: Props) {
@@ -59,7 +63,15 @@ export default async function MatchPage({ params }: Props) {
       <PageHeader
         back={{ href: genderHref("/matches", match.gender), label: "All matches" }}
         eyebrow={[formatKeyLabel(match.formatKey), event].filter(Boolean).join(" · ")}
-        title={`${match.team1} v ${match.team2}`}
+        title={
+          <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+            <TeamFlag name={match.team1} size="lg" />
+            {match.team1}
+            <span className="font-sans text-lg font-semibold normal-case text-muted">v</span>
+            <TeamFlag name={match.team2} size="lg" />
+            {match.team2}
+          </span>
+        }
         sub={
           <>
             <time dateTime={match.endDate}>{dates}</time> · {match.venue}
@@ -72,7 +84,7 @@ export default async function MatchPage({ params }: Props) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="label">Result</p>
-            <h2 id="result-title" className="mt-1 text-heading">
+            <h2 id="result-title" className="mt-1 font-display text-[1.75rem] font-bold uppercase leading-tight">
               {match.result.text || "Result not recorded"}
             </h2>
           </div>

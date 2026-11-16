@@ -66,7 +66,7 @@ export default function Worm({ timeline, cursor, maxOvers }: { timeline: Timelin
       <h2 id="worm-title" className="card-title">
         Worm
       </h2>
-      <p className="mt-1 text-xs text-muted">Runs after each over. Dots mark overs in which wickets fell.</p>
+      <p className="mt-1 text-xs text-muted">Runs after each over; the side batting second is dashed. Dots mark overs in which wickets fell.</p>
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-muted">No overs bowled yet.</p>
       ) : (
@@ -89,7 +89,9 @@ export default function Worm({ timeline, cursor, maxOvers }: { timeline: Timelin
                   dataKey={`i${n}`}
                   name={`i${n}`}
                   stroke={TEAM_COLORS[n]}
-                  strokeWidth={2}
+                  strokeWidth={2.5}
+                  // The chasing side is dashed, so the two lines differ by more than colour.
+                  strokeDasharray={n === 1 ? "7 4" : undefined}
                   connectNulls
                   isAnimationActive={false}
                   dot={dot(n)}

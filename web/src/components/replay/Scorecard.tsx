@@ -3,9 +3,21 @@
 import { useState } from "react";
 import type { Replay } from "@/lib/contract/pipeline";
 import type { InningsCard } from "@/lib/replay/engine";
+import { Flag } from "../broadcast/Flag";
 import { fixed, TEAM_COLORS } from "./format";
+import { useMark } from "./marks";
 
-const th = "px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted first:pl-0 first:text-left";
+function TeamLine({ team, color }: { team: string; color: string }) {
+  const mark = useMark(team);
+  return (
+    <span className="inline-flex items-center gap-2 border-l-[3px] pl-2.5" style={{ borderColor: color }}>
+      <Flag mark={mark} size="sm" />
+      <span className="font-display text-lg font-bold uppercase tracking-[0.03em]">{team}</span>
+    </span>
+  );
+}
+
+const th = "px-2 py-2 text-right font-display text-label uppercase text-muted first:pl-0 first:text-left";
 const td = "px-2 py-2 text-right tabular-nums first:pl-0 first:text-left";
 
 function totalText(c: InningsCard) {
@@ -67,9 +79,8 @@ export default function Scorecard({ replay, cards, title = "Scorecard" }: { repl
         )}
       </div>
 
-      <p className="mt-3 flex items-center gap-2 text-sm">
-        <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: TEAM_COLORS[shown.innings % 2] }} />
-        <span className="font-semibold">{shown.team}</span>
+      <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <TeamLine team={shown.team} color={TEAM_COLORS[shown.innings % 2]} />
         <span className="tabular-nums text-muted">
           {totalText(shown)}
           {shown.complete ? "" : " · in progress"}

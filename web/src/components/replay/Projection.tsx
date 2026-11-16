@@ -47,14 +47,14 @@ export default function Projection({ state, model, eligibility, par }: { state: 
       {firstInnings && !state.inningsComplete ? (
         <>
           <p className="mt-3 flex flex-wrap items-baseline gap-x-2">
-            <span className="text-4xl font-semibold tracking-tight">{Math.round(mean)}</span>
+            <span className="score text-[3.25rem]">{Math.round(mean)}</span>
             <span className="text-sm text-muted">
               projected · 80% range {Math.round(low)}–{Math.round(high)}
             </span>
           </p>
-          <div className="mt-3 rounded-2xl bg-surface-2 px-4 py-3">
+          <div className="mt-3 rounded-card bg-surface-2 px-4 py-3">
             <p className="text-sm">
-              <span className="font-semibold">Par {par.par}</span>
+              <span className="font-display text-lg font-bold uppercase tracking-[0.03em]">Par {par.par}</span>
               <span className="text-muted"> · projection {versus(Math.round(mean), par.par)}</span>
             </p>
             <ParLine info={par} />
@@ -63,11 +63,11 @@ export default function Projection({ state, model, eligibility, par }: { state: 
       ) : firstInnings ? (
         <>
           <p className="mt-3 text-sm">
-            <span className="text-4xl font-semibold tracking-tight">{state.runs}</span>
+            <span className="score text-[3.25rem]">{state.runs}</span>
             <span className="ml-2 text-muted">final total, {versus(state.runs, par.par)}</span>
           </p>
-          <div className="mt-3 rounded-2xl bg-surface-2 px-4 py-3">
-            <p className="text-sm font-semibold">Par {par.par}</p>
+          <div className="mt-3 rounded-card bg-surface-2 px-4 py-3">
+            <p className="font-display text-lg font-bold uppercase tracking-[0.03em]">Par {par.par}</p>
             <ParLine info={par} />
           </div>
         </>
@@ -75,7 +75,7 @@ export default function Projection({ state, model, eligibility, par }: { state: 
         <>
           {state.need != null && state.need > 0 && !state.inningsComplete ? (
             <p className="mt-3 text-sm">
-              <span className="text-4xl font-semibold tracking-tight">{Math.round(mean - state.runs)}</span>
+              <span className="score text-[3.25rem]">{Math.round(mean - state.runs)}</span>
               <span className="ml-2 text-muted">
                 more runs expected from {plural(ballsLeft, "ball")} with {plural(state.wickets, "wicket")} down · 80% range {Math.round(low - state.runs)}–
                 {Math.round(high - state.runs)}. {state.battingTeam} need {state.need}.

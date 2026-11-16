@@ -23,7 +23,9 @@ export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n ==
 
 /**
  * Team colours by innings order: slot 1 bats first, slot 2 chases. They are
- * the --chart-1 and --chart-2 tokens (blue and orange, Okabe-Ito based, safe
- * for colour-vision deficiency), so they follow the light or dark theme.
+ * each side's chart colour (--team-a-line, --team-b-line, set by the replay
+ * from lib/teams/colors.ts: at least 3:1 on the surface, and never two
+ * look-alike colours), falling back to the --chart-1 and --chart-2 tokens
+ * (Okabe-Ito blue and orange) outside a replay.
  */
-export const TEAM_COLORS = ["var(--chart-1)", "var(--chart-2)"] as const;
+export const TEAM_COLORS = ["var(--team-a-line, var(--chart-1))", "var(--team-b-line, var(--chart-2))"] as const;

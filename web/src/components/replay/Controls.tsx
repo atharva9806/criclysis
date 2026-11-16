@@ -18,7 +18,7 @@ function IconButton({ label, onClick, disabled, children, keys }: { label: strin
       aria-label={label}
       aria-keyshortcuts={keys}
       title={keys ? `${label} (${keys.replace(/\+/g, " + ")})` : label}
-      className="grid h-10 w-10 place-items-center rounded-full text-fg transition-colors hover:bg-surface-2 aria-disabled:cursor-default aria-disabled:opacity-30 aria-disabled:hover:bg-transparent"
+      className="grid h-11 w-11 place-items-center rounded-full border border-line text-fg transition-colors hover:border-line-strong hover:bg-surface-2 aria-disabled:cursor-default aria-disabled:opacity-30 aria-disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -81,7 +81,7 @@ export default function Controls({
             onClick={onToggle}
             aria-label={playing ? "Pause" : atEnd ? "Replay from the start" : "Play"}
             aria-keyshortcuts="Space K"
-            className="mx-1 grid h-12 w-12 place-items-center rounded-full bg-accent text-on-accent transition-colors hover:bg-accent-strong"
+            className="mx-1.5 grid h-14 w-14 place-items-center rounded-full bg-accent text-on-accent shadow-[0_0_24px_-6px_var(--accent)] transition-[background-color,transform] hover:bg-accent-strong motion-safe:active:scale-95"
           >
             {playing ? (
               <svg {...svg} width={22} height={22}>
@@ -136,11 +136,11 @@ export default function Controls({
           onChange={(e) => onSeek(Number(e.target.value))}
           onKeyDown={onScrubKey}
           aria-valuetext={position}
-          className="w-full cursor-pointer accent-[var(--accent)]"
+          className="h-6 w-full cursor-pointer accent-[var(--accent)]"
         />
       </label>
       <p className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-muted">
-        <span aria-hidden>{position}</span>
+        <span aria-hidden className="font-medium text-fg">{position}</span>
         <span className="hidden sm:inline">Space play or pause · ← → ball · Shift + ← → over</span>
       </p>
     </section>

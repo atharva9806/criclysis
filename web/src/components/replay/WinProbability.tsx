@@ -2,27 +2,46 @@
 
 import { Area, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { resultNote, type ChartPoint, type ProbabilityView } from "@/lib/replay/engine";
+import { Flag } from "../broadcast/Flag";
 import { pct, TEAM_COLORS } from "./format";
+import { useMark } from "./marks";
 
 type Row = ChartPoint & { ahead1: number; ahead2: number };
 
+function Side({ team, p, align }: { team: string; p: number; align: "left" | "right" }) {
+  const mark = useMark(team);
+  const right = align === "right";
+  return (
+    <p className={`flex min-w-0 items-center gap-2.5 ${right ? "flex-row-reverse text-right" : ""}`}>
+      <Flag mark={mark} size="md" />
+      <span className="min-w-0">
+        <span className="block truncate font-display text-sm font-bold uppercase tracking-[0.06em]">
+          <span aria-hidden="true">{mark.code}</span>
+          <span className="ml-1.5 hidden font-sans text-xs font-medium normal-case tracking-normal text-muted sm:inline">{team}</span>
+          <span className="sr-only sm:hidden">{team}</span>
+        </span>
+        <span className="score block text-[2.5rem]">
+          {pct(p)}
+        </span>
+      </span>
+    </p>
+  );
+}
+
+/** The two sides' chances as one bar in their colours, with a tick at 50%. The numbers are in the text, so the bar is decoration. */
 function Meter({ teams, p }: { teams: [string, string]; p: number }) {
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3 text-sm">
-        <span className="flex items-center gap-2">
-          <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: TEAM_COLORS[0] }} />
-          {teams[0]} <span className="text-2xl font-semibold">{pct(p)}</span>
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="text-2xl font-semibold">{pct(1 - p)}</span> {teams[1]}
-          <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: TEAM_COLORS[1] }} />
-        </span>
+      <div className="flex items-end justify-between gap-3">
+        <Side team={teams[0]} p={p} align="left" />
+        <Side team={teams[1]} p={1 - p} align="right" />
       </div>
-      <div aria-hidden className="mt-2 flex h-2 gap-0.5 overflow-hidden rounded-full">
-        <div className="motion-safe:transition-[width] motion-safe:duration-300" style={{ width: `${p * 100}%`, background: TEAM_COLORS[0] }} />
-        <div className="flex-1" style={{ background: TEAM_COLORS[1] }} />
+      <div aria-hidden className="relative mt-3 flex h-4 gap-1 overflow-hidden rounded-full bg-surface-3">
+        <div className="rounded-l-full motion-safe:transition-[width] motion-safe:duration-500" style={{ width: `calc(${p * 100}% - 2px)`, background: TEAM_COLORS[0] }} />
+        <div className="flex-1 rounded-r-full" style={{ background: TEAM_COLORS[1] }} />
+        <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-bg" />
       </div>
+      <p aria-hidden className="mt-1 text-center text-[11px] text-muted">50%</p>
     </div>
   );
 }
@@ -71,14 +90,14 @@ export default function WinProbability({
         <h2 id="winprob-title" className="card-title">
           Win probability
         </h2>
-        {view.kind === "model" && <p className="text-xs text-muted">Model of the match state only (score, balls, wickets)</p>}
+        {view.kind === "model" && <p className="text-xs text-muted">A model of the match state only: score, balls left, wickets</p>}
       </div>
 
       <div className="mt-3">
         {view.kind === "model" && <Meter teams={teams} p={view.battingFirst} />}
         {view.kind === "result" && (
           <p className="text-sm">
-            <span className="text-lg font-semibold">{view.outcome.text}</span>
+            <span className="font-display text-2xl font-bold uppercase tracking-[0.02em]">{view.outcome.text}</span>
             <span className="mt-1 block text-muted">
               {resultNote(view.outcome.kind, hiddenReason)}
             </span>
@@ -115,8 +134,8 @@ export default function WinProbability({
                 />
                 <ReferenceLine y={0.5} stroke="var(--chart-ref)" />
                 <ReferenceLine x={maxOvers} stroke="var(--chart-grid)" label={{ value: "Innings 2", position: "insideTopLeft", fontSize: 11, fill: "var(--chart-axis)" }} />
-                <Area dataKey="ahead1" baseValue={0.5} stroke="none" fill={TEAM_COLORS[0]} fillOpacity={0.12} isAnimationActive={false} activeDot={false} />
-                <Area dataKey="ahead2" baseValue={0.5} stroke="none" fill={TEAM_COLORS[1]} fillOpacity={0.12} isAnimationActive={false} activeDot={false} />
+                <Area dataKey="ahead1" baseValue={0.5} stroke="none" fill={TEAM_COLORS[0]} fillOpacity={0.22} isAnimationActive={false} activeDot={false} />
+                <Area dataKey="ahead2" baseValue={0.5} stroke="none" fill={TEAM_COLORS[1]} fillOpacity={0.22} isAnimationActive={false} activeDot={false} />
                 <Line
                   dataKey="p"
                   stroke="var(--fg)"

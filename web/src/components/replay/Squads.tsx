@@ -1,7 +1,21 @@
+"use client";
+
 import type { TraitRow } from "@/lib/contract/db";
 import type { SquadMember } from "@/lib/replay/matchup";
 import Link from "next/link";
+import { Flag } from "../broadcast/Flag";
 import { formatDate, TEAM_COLORS } from "./format";
+import { useMark } from "./marks";
+
+function SquadTitle({ team, color }: { team: string; color: string }) {
+  const mark = useMark(team);
+  return (
+    <h3 className="flex items-center gap-2.5 border-b-[3px] pb-2 font-display text-lg font-bold uppercase tracking-[0.03em]" style={{ borderColor: color }}>
+      <Flag mark={mark} size="sm" />
+      {team}
+    </h3>
+  );
+}
 
 function ordinal(n: number): string {
   const v = Math.round(n);
@@ -54,16 +68,13 @@ export default function Squads({
       <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
         {[...squads].sort((a, b) => rank(a.team) - rank(b.team)).map((s) => (
           <div key={s.team}>
-            <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: TEAM_COLORS[Math.max(0, battingOrder.indexOf(s.team)) % 2] }} />
-              {s.team}
-            </h3>
+            <SquadTitle team={s.team} color={TEAM_COLORS[Math.max(0, battingOrder.indexOf(s.team)) % 2]} />
             <ol className="mt-2 divide-y divide-line">
               {s.players.map((p) => (
                 <li key={p.person} className="py-2">
                   <p className="text-sm">
                     {p.slug ? (
-                      <Link href={`/players/${p.slug}`} className="font-medium hover:underline">
+                      <Link href={`/players/${p.slug}`} className="link-quiet font-medium">
                         {p.name}
                       </Link>
                     ) : (

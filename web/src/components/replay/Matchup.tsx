@@ -10,7 +10,8 @@ function Figures({ label, row, min }: { label: string; row: SplitRow | null; min
       <dd className="mt-0.5 text-sm tabular-nums">
         {row ? (
           <>
-            <span className="font-semibold">SR {fixed(row.strikeRate, 1)}</span>
+            <span className="score mr-1 text-2xl">{fixed(row.strikeRate, 1)}</span>
+            <span className="font-semibold">SR</span>
             <span className="text-muted">
               {" "}
               · avg {row.average == null ? "– (never out)" : fixed(row.average, 1)} · dots {fixed(row.dotPct, 1)}% · {row.balls} balls
@@ -52,15 +53,15 @@ export default function Matchup({
         <p className="mt-3 text-sm text-muted">The matchup appears once a batter and bowler are at the crease.</p>
       ) : (
         <>
-          <p className="mt-3 text-base font-semibold">
+          <p className="mt-3 font-display text-2xl font-bold uppercase leading-tight tracking-[0.02em]">
             {matchup.batter.slug ? (
-              <Link href={`/players/${matchup.batter.slug}`} className="hover:underline">
+              <Link href={`/players/${matchup.batter.slug}`} className="link-quiet">
                 {matchup.batter.name}
               </Link>
             ) : (
               matchup.batter.name
             )}{" "}
-            <span className="font-normal text-muted">facing</span> {matchup.bowler.name}
+            <span className="font-sans text-sm font-normal normal-case tracking-normal text-muted">facing</span> {matchup.bowler.name}
           </p>
           <p className="text-xs text-muted">
             {matchup.bowler.typeLabel ?? "Bowling type not recorded"}

@@ -23,6 +23,7 @@ import { WinModel, type WinModelCore } from "@/lib/winprob/model";
 import BallTicker from "./BallTicker";
 import Controls, { type Speed } from "./Controls";
 import { formatDate, pct } from "./format";
+import { MarksProvider, sideVars, type Marks } from "./marks";
 import Matchup from "./Matchup";
 import Projection, { parInfo } from "./Projection";
 import Scoreboard from "./Scoreboard";
@@ -40,6 +41,10 @@ export type ReplayPlayerProps = {
   /** The date the dataset runs to, for the credit line. Defaults to the context's. */
   datasetAsOf?: string | null;
   initialCursor?: number;
+  /** Each side's colours and flag, by team name (built on the server from lib/teams/flags.ts). */
+  marks?: Marks;
+  /** Render the title block; the live page draws its own floodlit header instead. */
+  header?: boolean;
 };
 
 /** Milliseconds per delivery at each speed. */
@@ -78,7 +83,9 @@ function overSummary(tl: Timeline, s: MatchState, view: ProbabilityView, teams: 
   return parts.join(" ");
 }
 
-export default function ReplayPlayer({ replay, model: modelJson, context = null, datasetAsOf, initialCursor = 0 }: ReplayPlayerProps) {
+const NO_MARKS: Marks = {};
+
+export default function ReplayPlayer({ replay, model: modelJson, context = null, datasetAsOf, initialCursor = 0, marks = NO_MARKS, header = true }: ReplayPlayerProps) {
   const tl = useMemo(() => buildTimeline(replay), [replay]);
   const model = useMemo(() => (modelJson ? new WinModel(modelJson) : null), [modelJson]);
   const eligibility = useMemo(() => winProbEligibility(replay, model), [replay, model]);
@@ -169,7 +176,9 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
   const toss = replay.toss?.winner ? `${replay.toss.winner} won the toss and chose to ${replay.toss.decision === "bat" ? "bat" : "field"}.` : null;
 
   return (
-    <div data-replay-root>
+    <MarksProvider value={marks}>
+    <div data-replay-root style={sideVars(marks, teams)}>
+      {header ? (
       <header className="mb-6">
         <p className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted">
           <span className="badge badge-accent font-semibold uppercase tracking-wider">Replay</span>
@@ -186,6 +195,7 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
         </p>
         <p className="mt-1 text-sm text-muted">A real match, replayed ball by ball from its Cricsheet record. Nothing here is simulated.</p>
       </header>
+      ) : null}
 
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {announcement}
@@ -213,8 +223,8 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
                 onSeek={seek}
                 onSpeed={setSpeed}
               />
-              <BallTicker replay={replay} timeline={tl} cursor={cursor} />
               <WinProbability teams={teams} view={view} series={series} maxOvers={(model?.maxBalls ?? 300) / 6} hiddenReason={eligibility.ok ? null : eligibility.reason} />
+              <BallTicker replay={replay} timeline={tl} cursor={cursor} />
             </div>
             <div className="min-w-0 space-y-5">
               <Projection state={state} model={model} eligibility={eligibility} par={par} />
@@ -253,5 +263,6 @@ export default function ReplayPlayer({ replay, model: modelJson, context = null,
         </p>
       </footer>
     </div>
+    </MarksProvider>
   );
 }
